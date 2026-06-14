@@ -3,7 +3,7 @@
 ## Background
 
 When a credit score is calibrated to a probability of default (PD), the
-resulting score-to-PD mapping is expected to be **monotone**: a higher
+resulting score-to-PD mapping is expected to be monotone: a higher
 score should never imply a higher PD than a lower score. This is both a
 business expectation (the score is supposed to rank-order risk) and, in
 most jurisdictions, a regulatory one.
@@ -11,7 +11,7 @@ most jurisdictions, a regulatory one.
 In practice, empirical bad rates observed within score bands are noisy,
 especially in the tails where observation counts are small. A direct
 mapping from "observed bad rate per score band" to PD can therefore be
-**non-monotone** even when the underlying score itself rank-orders risk
+non-monotone even when the underlying score itself rank-orders risk
 well overall.
 
 The Monotone Adjacent Pooling Algorithm (MAPA) resolves this by merging
@@ -53,8 +53,8 @@ and run the pooling step directly on those bands.
 
 ## Relationship to PAVA / isotonic regression
 
-MAPA is an application of the **Pool Adjacent Violators Algorithm (PAVA)**
-- the classical algorithm for isotonic regression - to grouped, binary
+MAPA is an application of the Pool Adjacent Violators Algorithm (PAVA)
+(the classical algorithm for isotonic regression) to grouped, binary
 outcome data ordered by score. PAVA finds the monotone step function that
 best fits the data in a least-squares sense; pooling adjacent violators
 until none remain is exactly how that optimum is reached. MAPA applies the
@@ -71,7 +71,7 @@ partition the full score range and the full population exactly.
 
 ## Minimum bin size
 
-Pooling stops as soon as monotonicity is satisfied - it does not guarantee
+Pooling stops as soon as monotonicity is satisfied, it does not guarantee
 that every resulting band has *enough* observations to support a stable
 rate estimate. A band can end up monotone but tiny (e.g. a handful of
 observations at the extreme low- or high-risk end of the score range).
@@ -93,7 +93,7 @@ no-op - every band trivially satisfies `n_obs >= 0` and `n_bads >= 0`.
 ## Confidence-based pooling
 
 Monotonicity alone does not guarantee that two adjacent bands' bad rates
-are *meaningfully different* - a band can be merely-monotone-by-luck rather
+are *meaningfully different* as a band can be merely-monotone-by-luck rather
 than genuinely distinguishable from its neighbour, especially when either
 band is small.
 
@@ -153,7 +153,7 @@ prior.
 
 ### Note on monotonicity after shrinkage
 
-Shrinking each band independently toward a single global prior is **not**
+Shrinking each band independently toward a single global prior is not
 guaranteed to preserve the monotonicity established by the pooling step. A
 small band whose empirical rate happens to be close to a much larger
 neighbour's can be pulled past it toward the prior, re-introducing a small
@@ -206,14 +206,14 @@ fully non-increasing `pd` sequence (see
 
 ## Smoothing: log-odds interpolation
 
-Even after re-pooling, the calibrated PD curve is a **step function**:
+Even after re-pooling, the calibrated PD curve is a step function:
 every score within a pool gets that pool's single PD, with a discontinuous
 jump at each pool boundary. Two scores one point apart, either side of a
 pool boundary, can get noticeably different PDs, while two scores far apart
 within the same wide pool get identical PDs.
 
-`interpolate_pd` smooths this into a continuous curve using **log-odds
-interpolation**, a standard scorecard scaling technique. Each pool is
+`interpolate_pd` smooths this into a continuous curve using log-odds
+interpolation, a standard scorecard scaling technique. Each pool is
 reduced to a single anchor point:
 
 - its midpoint score, `(score_min + score_max) / 2`, and
