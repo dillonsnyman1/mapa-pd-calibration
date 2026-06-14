@@ -1,0 +1,56 @@
+# Reference implementations
+
+Independent, side-by-side implementations of the Monotone Adjacent Pooling
+Algorithm (MAPA), each idiomatic to its language and free of external
+dependencies:
+
+- [`python/`](python/) - pure Python (standard library only)
+- [`cpp/`](cpp/) - C++17 (no external dependencies)
+- [`sas/`](sas/) - SAS macros
+
+The Python and C++ implementations are validated against the same fixture
+files in [`fixtures/`](fixtures/) as part of automated CI, so they can be
+checked for equivalence and used as a starting point for ports to other
+languages. The SAS implementation uses the same fixtures but is validated
+manually (see [`sas/README.md`](sas/README.md)) since no SAS runtime is
+available in CI.
+
+See [`../docs/mapa-methodology.md`](../docs/mapa-methodology.md) for an
+explanation of the algorithm.
+
+## Fixtures
+
+- `fixtures/raw_observations.csv` - raw observation-level data:
+  `score,bad`, where `bad` is 1 for a default and 0 otherwise.
+- `fixtures/expected_initial_bins.csv` - the expected result of grouping
+  `raw_observations.csv` into one bin per unique score:
+  `score_min,score_max,n_obs,n_bads` (with `score_min == score_max` for
+  every row).
+- `fixtures/expected_pooled_bins.csv` - the expected result of running MAPA
+  on those initial bins with the default (non-increasing bad rate)
+  direction: `score_min,score_max,n_obs,n_bads`.
+- `fixtures/expected_min_size_bins.csv` - the expected result of applying
+  `enforce_minimum_size` to `expected_pooled_bins.csv` with
+  `min_obs=50, min_bads=10`: `score_min,score_max,n_obs,n_bads`.
+- `fixtures/expected_calibrated_bins.csv` - the expected result of applying
+  Bayesian (credibility) adjustment to `expected_min_size_bins.csv` with
+  `k=10` and the default prior (overall bad rate):
+  `score_min,score_max,n_obs,n_bads,pd`. Note that two adjacent bands in
+  this fixture deliberately cross after adjustment - see the "Bayesian
+  adjustment" section in
+  [`../docs/mapa-methodology.md`](../docs/mapa-methodology.md).
+- `fixtures/expected_repooled_calibrated_bins.csv` - the expected result of
+  applying `repool_calibrated_bins` to `expected_calibrated_bins.csv`:
+  `score_min,score_max,n_obs,n_bads,pd`. This merges the crossing pair from
+  `expected_calibrated_bins.csv` back into a single monotone band - see the
+  "Re-pooling after shrinkage" section in
+  [`../docs/mapa-methodology.md`](../docs/mapa-methodology.md).
+- `fixtures/expected_smoothed_pds.csv` - the expected result of applying
+  `interpolate_pd` to `expected_repooled_calibrated_bins.csv` for each
+  unique score in `raw_observations.csv`: `score,pd`. See the "Smoothing:
+  log-odds interpolation" section in
+  [`../docs/mapa-methodology.md`](../docs/mapa-methodology.md).
+- `fixtures/expected_pooled_bins_confidence.csv` - the expected result of
+  running MAPA on `expected_initial_bins.csv` with `min_confidence=0.95`:
+  `score_min,score_max,n_obs,n_bads`. See the "Confidence-based pooling"
+  section in [`../docs/mapa-methodology.md`](../docs/mapa-methodology.md).

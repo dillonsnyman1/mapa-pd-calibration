@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# C++
+reference/cpp/build/
+
+# Node / frontend (future)
+node_modules/
+dist/
+
+# Editors / OS
+.DS_Store
+.vscode/
