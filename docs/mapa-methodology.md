@@ -44,7 +44,7 @@ non-increasing as score increases).
    - Repeat until all bands have been processed.
 
 Because merging recomputes the bad rate of the combined band, a single
-merge can resolve - or trigger - multiple violations, so the pooling step
+merge can resolve (or trigger) multiple violations, so the pooling step
 repeats until the top of the stack is consistent with the band below it.
 
 If you already have pre-aggregated score bands (e.g. from an existing
