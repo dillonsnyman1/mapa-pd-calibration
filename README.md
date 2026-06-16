@@ -67,7 +67,7 @@ See [`reference/sas/README.md`](reference/sas/README.md).
 
 ### Live demo
 
-> **Live demo**: *(URL will appear here after first deploy)*
+> **Live demo**: [dcg14fdv56g8g.cloudfront.net](https://dcg14fdv56g8g.cloudfront.net)
 >
 > The backend is fully stateless - each request is processed and returned in one go, with no data written to disk or stored anywhere.
 
