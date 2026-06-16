@@ -23,9 +23,10 @@ score band into a monotone score-to-PD calibration curve.
   the algorithm, its relationship to PAVA / isotonic regression, and
   attribution.
 - [`reference/`](reference/) - clean, dependency-light, side-by-side
-  implementations of the core algorithm in **Python**, **C++** and **SAS**,
-  validated against shared fixture data. Intended as a readable starting
-  point for anyone wanting to implement or port MAPA themselves.
+  implementations of the core algorithm in **Python**, **C++**, **R**,
+  **MATLAB** and **SAS**, all validated against the same shared fixture data.
+  Intended as a readable starting point for anyone wanting to implement or
+  port MAPA themselves.
 - [`examples/`](examples/) - scripts that plot the resulting score-to-PD
   calibration curves (unsmoothed and smoothed) for the Python and C++
   implementations.
@@ -60,6 +61,18 @@ cmake -S . -B build
 cmake --build build
 ctest --test-dir build
 ```
+
+### R
+
+```bash
+cd reference/r
+Rscript -e "install.packages('testthat', repos='https://cloud.r-project.org')"
+Rscript test_mapa.R
+```
+
+### MATLAB
+
+Add `reference/matlab/` to your MATLAB path, then run `test_mapa` from the MATLAB command window.
 
 ### SAS
 

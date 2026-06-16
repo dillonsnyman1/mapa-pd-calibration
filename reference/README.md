@@ -6,14 +6,14 @@ dependencies:
 
 - [`python/`](python/) - pure Python (standard library only)
 - [`cpp/`](cpp/) - C++17 (no external dependencies)
+- [`r/`](r/) - base R only (`testthat` for tests only)
+- [`matlab/`](matlab/) - base MATLAB, no toolboxes required
 - [`sas/`](sas/) - SAS macros
 
-The Python and C++ implementations are validated against the same fixture
-files in [`fixtures/`](fixtures/) as part of automated CI, so they can be
-checked for equivalence and used as a starting point for ports to other
-languages. The SAS implementation uses the same fixtures but is validated
-manually (see [`sas/README.md`](sas/README.md)) since no SAS runtime is
-available in CI.
+Python, C++ and R are validated against the same fixture files in
+[`fixtures/`](fixtures/) as part of automated CI. The MATLAB and SAS
+implementations use the same fixtures but are validated manually (see their
+respective READMEs) since those runtimes are not available in CI.
 
 See [`../docs/mapa-methodology.md`](../docs/mapa-methodology.md) for an
 explanation of the algorithm.
