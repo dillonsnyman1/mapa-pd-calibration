@@ -58,7 +58,7 @@ export function ControlsPanel({ params, onParamsChange, onObservationsChange, on
         <div className="control-field">
           <label>Dataset</label>
           <p className="dataset-label">{datasetLabel}</p>
-          <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
             <input
               type="file"
               accept=".csv"

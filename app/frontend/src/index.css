@@ -210,3 +210,38 @@ button:disabled {
   font-size: 0.8rem;
   color: var(--muted);
 }
+
+.chart-wrap {
+  height: 420px;
+}
+
+@media (max-width: 600px) {
+  #root {
+    padding: 1.25rem 1rem 3rem;
+  }
+
+  h1 {
+    font-size: 1.35rem;
+  }
+
+  .card {
+    padding: 1.1rem;
+    margin-top: 1rem;
+  }
+
+  .chart-wrap {
+    height: 260px;
+  }
+
+  button {
+    padding: 0.55rem 0.85rem;
+  }
+
+  .stepper-controls .step-count {
+    margin-left: 0;
+    flex-basis: 100%;
+    order: -1;
+    margin-bottom: 0.25rem;
+    font-size: 0.8rem;
+  }
+}

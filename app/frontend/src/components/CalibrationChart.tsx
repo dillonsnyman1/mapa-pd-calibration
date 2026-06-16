@@ -39,7 +39,8 @@ export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anc
   const points = [...stepPoints, ...smoothedPoints, ...anchorPoints].sort((a, b) => a.score - b.score);
 
   return (
-    <ResponsiveContainer width="100%" height={420}>
+    <div className="chart-wrap">
+    <ResponsiveContainer width="100%" height="100%">
       <LineChart data={points} margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
         {showBandRanges &&
@@ -100,5 +101,6 @@ export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anc
         )}
       </LineChart>
     </ResponsiveContainer>
+    </div>
   );
 }

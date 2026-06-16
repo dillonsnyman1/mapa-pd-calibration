@@ -90,7 +90,8 @@ export function StackStepper<T extends BinLike>({
     <div>
       <p className="stepper-reason">{step.action === "push" ? pushMessage(step) : step.reason}</p>
 
-      <ResponsiveContainer width="100%" height={420}>
+      <div className="chart-wrap">
+      <ResponsiveContainer width="100%" height="100%">
         <LineChart data={mergedPoints} margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           {step.stack.map((b, i) => {
@@ -158,6 +159,7 @@ export function StackStepper<T extends BinLike>({
           />
         </LineChart>
       </ResponsiveContainer>
+      </div>
     </div>
   );
 }
