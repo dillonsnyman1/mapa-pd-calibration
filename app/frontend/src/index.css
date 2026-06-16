@@ -1,0 +1,212 @@
+:root {
+  font: 16px/1.6 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  color: #1f2430;
+  background: #f3f4f7;
+  --accent: #3461eb;
+  --accent-soft: #e8edfc;
+  --border: #dde1e8;
+  --muted: #6b7280;
+  --card-bg: #ffffff;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+header {
+  margin-bottom: 2rem;
+}
+
+h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+p {
+  color: var(--muted);
+  margin: 0.25rem 0 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.card > h2 {
+  margin-bottom: 0.25rem;
+}
+
+.card > p {
+  margin-bottom: 1rem;
+}
+
+fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+legend {
+  font-size: 1.25rem;
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 1rem;
+  color: #1f2430;
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.35rem;
+}
+
+label.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+}
+
+input[type="file"] {
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.control-group + .control-group {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.control-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.control-field .value {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem 2rem;
+}
+
+button {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #374151;
+  border-radius: 6px;
+  padding: 0.4rem 0.85rem;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stepper-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.stepper-controls .step-count {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper-reason {
+  font-size: 0.9rem;
+  color: #374151;
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  margin: 0 0 1rem;
+  min-height: 1.4em;
+}
+
+.error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.dataset-label {
+  font-size: 0.85rem;
+  color: #374151;
+  font-weight: 500;
+}
+
+.muted-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+}

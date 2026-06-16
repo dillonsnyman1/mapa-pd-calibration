@@ -27,9 +27,9 @@ score band into a monotone score-to-PD calibration curve.
 - [`examples/`](examples/) - scripts that plot the resulting score-to-PD
   calibration curves (unsmoothed and smoothed) for the Python and C++
   implementations.
-- `app/` - *(planned)* a full-stack interactive demo (FastAPI + React)
+- [`app/`](app/) - a full-stack interactive demo (FastAPI + React)
   visualizing the pooling process and the resulting calibration curve on a
-  synthetic scored population.
+  synthetic scored population, with adjustable parameters and CSV upload.
 
 ## Methodology
 
@@ -62,3 +62,8 @@ ctest --test-dir build
 ### SAS
 
 See [`reference/sas/README.md`](reference/sas/README.md).
+
+### Live demo
+
+See [`app/README.md`](app/README.md) to run the interactive FastAPI + React
+demo locally.
