@@ -19,6 +19,41 @@ env:
   PROJECT_NAME: mapa-pd-calibration
 
 jobs:
+  python-tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run Python tests
+        working-directory: reference/python
+        run: pytest test_mapa.py -v
+
+  cpp-tests:
+    name: C++ tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        working-directory: reference/cpp
+        run: cmake -S . -B build
+
+      - name: Build
+        working-directory: reference/cpp
+        run: cmake --build build
+
+      - name: Test
+        working-directory: reference/cpp
+        run: ctest --test-dir build --output-on-failure
+
   r-tests:
     name: R tests
     runs-on: ubuntu-latest
@@ -59,7 +94,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [frontend-build, r-tests]
+    needs: [frontend-build, python-tests, cpp-tests, r-tests]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
