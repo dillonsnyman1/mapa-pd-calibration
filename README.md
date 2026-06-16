@@ -1,5 +1,7 @@
 # MAPA: Monotone Adjacent Pooling Algorithm for PD Calibration
 
+[![CI/CD](https://github.com/dillonsnyman1/mapa-pd-calibration/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/dillonsnyman1/mapa-pd-calibration/actions/workflows/ci-cd.yml)
+
 A reference implementation and interactive demo of the **Monotone Adjacent
 Pooling Algorithm (MAPA)** - a method for turning empirical bad rates per
 score band into a monotone score-to-PD calibration curve.
@@ -64,6 +66,10 @@ ctest --test-dir build
 See [`reference/sas/README.md`](reference/sas/README.md).
 
 ### Live demo
+
+> **Live demo**: *(URL will appear here after first deploy)*
+>
+> The backend is fully stateless - each request is processed and returned in one go, with no data written to disk or stored anywhere.
 
 See [`app/README.md`](app/README.md) to run the interactive FastAPI + React
 demo locally.
