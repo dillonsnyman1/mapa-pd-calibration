@@ -11,6 +11,13 @@ reference/cpp/build/
 node_modules/
 dist/
 
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
 # Editors / OS
 .DS_Store
 .vscode/
