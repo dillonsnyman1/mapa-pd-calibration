@@ -1,0 +1,182 @@
+name: CI/CD
+
+# Runs frontend build on every push/PR. The deploy job only runs for
+# pushes to main (or a manual dispatch) and only if the build passes.
+# See infra/README.md for the one-time AWS setup required before deploy
+# can run.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-2' }}
+  PROJECT_NAME: mapa-pd-calibration
+
+jobs:
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build
+
+  deploy:
+    name: Deploy
+    needs: [frontend-build]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        working-directory: infra
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.PROJECT_NAME }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+
+      # Create the ECR repository before building the image - the full
+      # apply below also creates the Lambda function, which requires the
+      # image (tagged with this commit's SHA) to already exist in ECR.
+      - name: Terraform apply (ECR repository only)
+        working-directory: infra
+        run: |
+          terraform apply -auto-approve \
+            -target=aws_ecr_repository.backend \
+            -var "aws_region=${{ env.AWS_REGION }}" \
+            -var "project_name=${{ env.PROJECT_NAME }}" \
+            -var "lambda_image_tag=${{ github.sha }}"
+
+      - name: Log in to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          # Build context is the repo root so the Dockerfile can reach
+          # reference/python/mapa.py and reference/fixtures/.
+          context: .
+          file: app/backend/Dockerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-backend:${{ github.sha }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.PROJECT_NAME }}-backend:latest
+
+      - name: Terraform apply
+        working-directory: infra
+        run: |
+          terraform apply -auto-approve \
+            -var "aws_region=${{ env.AWS_REGION }}" \
+            -var "project_name=${{ env.PROJECT_NAME }}" \
+            -var "lambda_image_tag=${{ github.sha }}"
+
+      - name: Capture Terraform outputs
+        id: tf-outputs
+        working-directory: infra
+        run: |
+          echo "api_url=$(terraform output -raw api_gateway_invoke_url)" >> "$GITHUB_OUTPUT"
+          echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)" >> "$GITHUB_OUTPUT"
+          echo "cloudfront_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
+          echo "cloudfront_url=$(terraform output -raw cloudfront_domain_name)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: app/frontend
+        env:
+          VITE_API_BASE_URL: ${{ steps.tf-outputs.outputs.api_url }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Sync frontend to S3
+        run: |
+          aws s3 sync app/frontend/dist "s3://${{ steps.tf-outputs.outputs.frontend_bucket }}" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.tf-outputs.outputs.cloudfront_id }}" \
+            --paths "/*"
+
+      - name: Summary
+        run: |
+          echo "Deployed demo: ${{ steps.tf-outputs.outputs.cloudfront_url }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update README with live demo URL
+        env:
+          CLOUDFRONT_URL: ${{ steps.tf-outputs.outputs.cloudfront_url }}
+        run: |
+          python3 - <<'EOF'
+          import os, re
+
+          url = os.environ["CLOUDFRONT_URL"]
+          domain = url.removeprefix("https://")
+          with open("README.md") as f:
+              content = f.read()
+
+          new_block = (
+              f"> **Live demo**: [{domain}]({url})\n"
+              ">\n"
+              "> The backend is fully stateless - each request is processed and "
+              "returned in one go, with no data written to disk or stored anywhere."
+          )
+          content = re.sub(r"> \*\*Live demo\*\*:.*?(?=\n\n|\Z)", new_block, content, flags=re.S)
+
+          with open("README.md", "w") as f:
+              f.write(content)
+          EOF
+
+      - name: Commit README update
+        run: |
+          if ! git diff --quiet README.md; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add README.md
+            git commit -m "Update live demo URL in README"
+            git pull --rebase --autostash origin main
+            git push
+          fi

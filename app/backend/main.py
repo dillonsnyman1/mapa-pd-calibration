@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -37,9 +38,10 @@ from schemas import (
 
 app = FastAPI(title="MAPA demo API")
 
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -131,3 +133,10 @@ def pipeline_endpoint(request: PipelineRequest) -> PipelineResponse:
 
 def _bins_from_step(step: Step) -> list[Bin]:
     return [Bin(score_min=b.score_min, score_max=b.score_max, n_obs=b.n_obs, n_bads=b.n_bads) for b in step.stack]
+
+
+# AWS Lambda entrypoint via API Gateway HTTP API proxy integration.
+# Unused when running locally with uvicorn.
+from mangum import Mangum  # noqa: E402
+
+handler = Mangum(app)
