@@ -6,15 +6,16 @@ from typing import List, Literal, Optional, Tuple
 
 from pydantic import BaseModel
 
-Observation = Tuple[float, int]
+Observation = Tuple[float, int, float]
 
 
 class CalibrationParams(BaseModel):
-    min_obs: int = 50
-    min_bads: int = 10
+    min_obs: float = 50
+    min_bads: float = 10
     k: float = 10
     min_confidence: Optional[float] = None
     increasing: bool = False
+    use_counts_for_thresholds: bool = True
 
 
 class CalibrationRequest(BaseModel):
@@ -25,8 +26,8 @@ class CalibrationRequest(BaseModel):
 class Band(BaseModel):
     score_min: float
     score_max: float
-    n_obs: int
-    n_bads: int
+    n_obs: float
+    n_bads: float
     pd: float
 
 
@@ -49,9 +50,11 @@ class CalibrationResponse(BaseModel):
 class StepBin(BaseModel):
     score_min: float
     score_max: float
-    n_obs: int
-    n_bads: int
+    n_obs: float
+    n_bads: float
     bad_rate: float
+    count: int
+    count_bads: int
 
 
 class Step(BaseModel):
@@ -63,9 +66,11 @@ class Step(BaseModel):
 class PdStepBin(BaseModel):
     score_min: float
     score_max: float
-    n_obs: int
-    n_bads: int
+    n_obs: float
+    n_bads: float
     pd: float
+    count: int
+    count_bads: int
 
 
 class PdStep(BaseModel):
@@ -77,8 +82,8 @@ class PdStep(BaseModel):
 class BayesianBand(BaseModel):
     score_min: float
     score_max: float
-    n_obs: int
-    n_bads: int
+    n_obs: float
+    n_bads: float
     bad_rate: float
     pd: float
 

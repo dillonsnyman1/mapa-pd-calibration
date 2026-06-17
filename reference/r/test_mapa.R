@@ -61,6 +61,41 @@ calibrated_bins_equal <- function(a, b, tol = 1e-9) {
   all(abs(a$pd - b$pd) < tol | (abs(a$pd - b$pd) / pmax(abs(b$pd), 1e-15)) < tol)
 }
 
+load_weighted_observations <- function() {
+  read.csv(file.path(FIXTURES_DIR, "raw_observations_weighted.csv"),
+           stringsAsFactors = FALSE)
+}
+
+load_weighted_bins <- function(filename) {
+  df <- read.csv(file.path(FIXTURES_DIR, filename), stringsAsFactors = FALSE)
+  df$n_obs      <- as.numeric(df$n_obs)
+  df$n_bads     <- as.numeric(df$n_bads)
+  df$count      <- as.integer(df$count)
+  df$count_bads <- as.integer(df$count_bads)
+  df
+}
+
+load_weighted_calibrated_bins <- function(filename) {
+  df <- load_weighted_bins(filename)
+  df$pd <- as.numeric(df$pd)
+  df
+}
+
+weighted_bins_equal <- function(a, b, tol = 1e-9) {
+  if (nrow(a) != nrow(b)) return(FALSE)
+  all(a$score_min == b$score_min) &&
+    all(a$score_max == b$score_max) &&
+    all(abs(a$n_obs  - b$n_obs)  < tol | (abs(a$n_obs  - b$n_obs)  / pmax(abs(b$n_obs),  1e-15)) < tol) &&
+    all(abs(a$n_bads - b$n_bads) < tol | (abs(a$n_bads - b$n_bads) / pmax(abs(b$n_bads), 1e-15)) < tol) &&
+    all(a$count      == b$count) &&
+    all(a$count_bads == b$count_bads)
+}
+
+weighted_calibrated_bins_equal <- function(a, b, tol = 1e-9) {
+  if (!weighted_bins_equal(a, b, tol)) return(FALSE)
+  all(abs(a$pd - b$pd) < tol | (abs(a$pd - b$pd) / pmax(abs(b$pd), 1e-15)) < tol)
+}
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -323,4 +358,117 @@ test_that("increasing direction works", {
 
   expect_equal(rates, sort(rates))
   expect_equal(sum(result$n_obs), nrow(obs))
+})
+
+# ---------------------------------------------------------------------------
+# Value-weighted tests
+# ---------------------------------------------------------------------------
+
+test_that("weighted bins_from_observations matches expected", {
+  obs      <- load_weighted_observations()
+  result   <- bins_from_observations(obs)
+  expected <- load_weighted_bins("expected_initial_bins_weighted.csv")
+
+  expect_true(weighted_bins_equal(result, expected))
+})
+
+test_that("weighted bins differ from unweighted", {
+  obs_w    <- load_weighted_observations()
+  obs_u    <- data.frame(score = obs_w$score, bad = obs_w$bad)
+
+  w_bins <- bins_from_observations(obs_w)
+  u_bins <- bins_from_observations(obs_u)
+
+  expect_equal(nrow(w_bins), nrow(u_bins))
+  w_rates <- w_bins$n_bads / w_bins$n_obs
+  u_rates <- u_bins$n_bads / u_bins$n_obs
+  diffs   <- sum(abs(w_rates - u_rates) > 1e-9)
+  expect_gt(diffs, 0)
+})
+
+test_that("weighted pooling preserves totals", {
+  obs     <- load_weighted_observations()
+  initial <- bins_from_observations(obs)
+  result  <- mapa(initial)
+
+  expect_equal(sum(result$n_obs),  sum(initial$n_obs),  tolerance = 1e-6)
+  expect_equal(sum(result$n_bads), sum(initial$n_bads), tolerance = 1e-6)
+  expect_equal(sum(result$count),      sum(initial$count))
+  expect_equal(sum(result$count_bads), sum(initial$count_bads))
+})
+
+test_that("weighted pooling is monotone", {
+  obs     <- load_weighted_observations()
+  initial <- bins_from_observations(obs)
+  result  <- mapa(initial)
+  rates   <- result$n_bads / result$n_obs
+
+  expect_equal(rates, sort(rates, decreasing = TRUE))
+})
+
+test_that("weighted pooling matches expected", {
+  obs      <- load_weighted_observations()
+  initial  <- bins_from_observations(obs)
+  result   <- mapa(initial)
+  expected <- load_weighted_bins("expected_pooled_bins_weighted.csv")
+
+  expect_true(weighted_bins_equal(result, expected))
+})
+
+test_that("weighted enforce_minimum_size uses counts", {
+  obs    <- load_weighted_observations()
+  pooled <- mapa(bins_from_observations(obs))
+  result <- enforce_minimum_size(pooled, min_obs = MIN_OBS, min_bads = MIN_BADS,
+                                  use_counts = TRUE)
+
+  if (nrow(result) > 1) {
+    expect_true(all(result$count      >= MIN_OBS))
+    expect_true(all(result$count_bads >= MIN_BADS))
+  }
+})
+
+test_that("weighted enforce_minimum_size matches expected", {
+  obs      <- load_weighted_observations()
+  pooled   <- mapa(bins_from_observations(obs))
+  result   <- enforce_minimum_size(pooled, min_obs = MIN_OBS, min_bads = MIN_BADS,
+                                    use_counts = TRUE)
+  expected <- load_weighted_bins("expected_min_size_bins_weighted.csv")
+
+  expect_true(weighted_bins_equal(result, expected))
+})
+
+test_that("weighted run_pipeline matches expected", {
+  obs      <- load_weighted_observations()
+  pipeline <- run_pipeline(obs, k = BAYESIAN_K, min_obs = MIN_OBS,
+                            min_bads = MIN_BADS, use_counts = TRUE)
+
+  expected <- load_weighted_calibrated_bins(
+    "expected_repooled_calibrated_bins_weighted.csv"
+  )
+
+  expect_equal(nrow(pipeline$bands), nrow(expected))
+  expect_equal(pipeline$bands$score_min, expected$score_min)
+  expect_equal(pipeline$bands$score_max, expected$score_max)
+  expect_equal(pipeline$bands$n_obs,  expected$n_obs,  tolerance = 1e-9)
+  expect_equal(pipeline$bands$n_bads, expected$n_bads, tolerance = 1e-9)
+  expect_equal(pipeline$bands$count,      expected$count)
+  expect_equal(pipeline$bands$count_bads, expected$count_bads)
+  expect_equal(pipeline$bands$pd, expected$pd, tolerance = 1e-9)
+})
+
+test_that("weighted smoothed PDs match expected", {
+  obs      <- load_weighted_observations()
+  pipeline <- run_pipeline(obs, k = BAYESIAN_K, min_obs = MIN_OBS,
+                            min_bads = MIN_BADS, use_counts = TRUE)
+
+  expected <- read.csv(file.path(FIXTURES_DIR,
+                                  "expected_smoothed_pds_weighted.csv"),
+                        stringsAsFactors = FALSE)
+
+  for (i in seq_len(nrow(expected))) {
+    score  <- expected$score[i]
+    exp_pd <- expected$pd[i]
+    result <- pipeline$pd_for_score(score)
+    expect_equal(result, exp_pd, tolerance = 1e-9)
+  }
 })

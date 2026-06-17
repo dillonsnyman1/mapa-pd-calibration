@@ -4,7 +4,9 @@
 
 A reference implementation and interactive demo of the **Monotone Adjacent
 Pooling Algorithm (MAPA)** - a method for turning empirical bad rates per
-score band into a monotone score-to-PD calibration curve.
+score band into a monotone score-to-PD calibration curve. Supports both
+number-weighted (standard) and value-weighted observations (e.g. for
+IFRS 9 exposure-weighted PD calibration).
 
 > **Attribution**: MAPA, as implemented here, is based on the method
 > described by **Raymond Anderson** in *The Credit Scoring Toolkit* (Oxford

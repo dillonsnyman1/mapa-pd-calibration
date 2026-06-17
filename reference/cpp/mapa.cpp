@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <tuple>
 
 namespace mapa {
 
@@ -16,7 +17,8 @@ bool violates(const Bin& lower, const Bin& upper, bool increasing) {
 }
 
 Bin merge(const Bin& a, const Bin& b) {
-    return Bin{a.score_min, b.score_max, a.n_obs + b.n_obs, a.n_bads + b.n_bads};
+    return Bin{a.score_min, b.score_max, a.n_obs + b.n_obs, a.n_bads + b.n_bads,
+               a.count + b.count, a.count_bads + b.count_bads};
 }
 
 bool violates_pd(const CalibratedBin& lower, const CalibratedBin& upper, bool increasing) {
@@ -27,11 +29,12 @@ bool violates_pd(const CalibratedBin& lower, const CalibratedBin& upper, bool in
 }
 
 CalibratedBin merge_calibrated(const CalibratedBin& a, const CalibratedBin& b) {
-    long n_obs = a.n_obs + b.n_obs;
-    long n_bads = a.n_bads + b.n_bads;
-    double pd = (a.pd * static_cast<double>(a.n_obs) + b.pd * static_cast<double>(b.n_obs)) /
-                static_cast<double>(n_obs);
-    return CalibratedBin{a.score_min, b.score_max, n_obs, n_bads, pd};
+    double n_obs = a.n_obs + b.n_obs;
+    double n_bads = a.n_bads + b.n_bads;
+    long count = a.count + b.count;
+    long count_bads = a.count_bads + b.count_bads;
+    double pd = (a.pd * a.n_obs + b.pd * b.n_obs) / n_obs;
+    return CalibratedBin{a.score_min, b.score_max, n_obs, n_bads, count, count_bads, pd};
 }
 
 // Approximates the inverse of the standard normal CDF (the quantile
@@ -72,14 +75,24 @@ double inverse_normal_cdf(double p) {
 // (i.e. "merge these") when the observed difference in bad rates is small
 // relative to its standard error - either because the rates are genuinely
 // close, or because both bins are too small to tell them apart.
+//
+// Uses raw observation counts (count / count_bads) for sample sizes. If
+// count is 0 (e.g. bins created via aggregate init without specifying
+// counts), falls back to n_obs / n_bads.
 bool not_significant(const Bin& a, const Bin& b, double confidence) {
-    double pooled_rate = static_cast<double>(a.n_bads + b.n_bads) / static_cast<double>(a.n_obs + b.n_obs);
+    long a_count = a.count != 0 ? a.count : static_cast<long>(a.n_obs);
+    long b_count = b.count != 0 ? b.count : static_cast<long>(b.n_obs);
+    long a_count_bads = a.count != 0 ? a.count_bads : static_cast<long>(a.n_bads);
+    long b_count_bads = b.count != 0 ? b.count_bads : static_cast<long>(b.n_bads);
+
+    double pooled_rate = static_cast<double>(a_count_bads + b_count_bads) /
+                         static_cast<double>(a_count + b_count);
     if (pooled_rate <= 0.0 || pooled_rate >= 1.0) {
         return true;
     }
 
     double se = std::sqrt(pooled_rate * (1.0 - pooled_rate) *
-                           (1.0 / static_cast<double>(a.n_obs) + 1.0 / static_cast<double>(b.n_obs)));
+                           (1.0 / a_count + 1.0 / b_count));
     double z = std::fabs(a.bad_rate() - b.bad_rate()) / se;
     double z_critical = inverse_normal_cdf((1.0 + confidence) / 2.0);
     return z < z_critical;
@@ -87,21 +100,33 @@ bool not_significant(const Bin& a, const Bin& b, double confidence) {
 
 }  // namespace
 
-std::vector<Bin> bins_from_observations(const std::vector<std::pair<double, int>>& observations) {
+std::vector<Bin> bins_from_observations(const std::vector<std::tuple<double, int, double>>& observations) {
     // std::map keeps entries sorted by score, giving us ascending order for free.
-    std::map<double, std::pair<long, long>> counts;
-    for (const auto& [score, bad] : observations) {
+    struct Accum { double n_obs = 0; double n_bads = 0; long count = 0; long count_bads = 0; };
+    std::map<double, Accum> counts;
+    for (const auto& [score, bad, weight] : observations) {
         auto& entry = counts[score];
-        entry.first += 1;
-        entry.second += bad;
+        entry.n_obs += weight;
+        entry.n_bads += bad * weight;
+        entry.count += 1;
+        entry.count_bads += bad;
     }
 
     std::vector<Bin> bins;
     bins.reserve(counts.size());
-    for (const auto& [score, count] : counts) {
-        bins.push_back(Bin{score, score, count.first, count.second});
+    for (const auto& [score, acc] : counts) {
+        bins.push_back(Bin{score, score, acc.n_obs, acc.n_bads, acc.count, acc.count_bads});
     }
     return bins;
+}
+
+std::vector<Bin> bins_from_observations(const std::vector<std::pair<double, int>>& observations) {
+    std::vector<std::tuple<double, int, double>> weighted;
+    weighted.reserve(observations.size());
+    for (const auto& [score, bad] : observations) {
+        weighted.emplace_back(score, bad, 1.0);
+    }
+    return bins_from_observations(weighted);
 }
 
 std::vector<Bin> mapa(const std::vector<Bin>& bins, bool increasing,
@@ -124,19 +149,35 @@ std::vector<Bin> mapa(const std::vector<Bin>& bins, bool increasing,
     return stack;
 }
 
+std::vector<Bin> calibrate(const std::vector<std::tuple<double, int, double>>& observations,
+                            bool increasing, std::optional<double> min_confidence) {
+    return mapa(bins_from_observations(observations), increasing, min_confidence);
+}
+
 std::vector<Bin> calibrate(const std::vector<std::pair<double, int>>& observations,
                             bool increasing, std::optional<double> min_confidence) {
     return mapa(bins_from_observations(observations), increasing, min_confidence);
 }
 
-std::vector<Bin> enforce_minimum_size(const std::vector<Bin>& input, long min_obs, long min_bads,
-                                       bool increasing, std::optional<double> min_confidence) {
+std::vector<Bin> enforce_minimum_size(const std::vector<Bin>& input, double min_obs, double min_bads,
+                                       bool increasing, std::optional<double> min_confidence,
+                                       bool use_counts) {
     std::vector<Bin> bins = input;
 
     while (bins.size() > 1) {
         size_t violator = bins.size();
         for (size_t i = 0; i < bins.size(); ++i) {
-            if (bins[i].n_obs < min_obs || bins[i].n_bads < min_bads) {
+            bool obs_violation, bads_violation;
+            if (use_counts) {
+                long effective_count = bins[i].count != 0 ? bins[i].count : static_cast<long>(bins[i].n_obs);
+                long effective_count_bads = bins[i].count != 0 ? bins[i].count_bads : static_cast<long>(bins[i].n_bads);
+                obs_violation = effective_count < min_obs;
+                bads_violation = effective_count_bads < min_bads;
+            } else {
+                obs_violation = bins[i].n_obs < min_obs;
+                bads_violation = bins[i].n_bads < min_bads;
+            }
+            if (obs_violation || bads_violation) {
                 violator = i;
                 break;
             }
@@ -172,19 +213,20 @@ std::vector<CalibratedBin> apply_bayesian_adjustment(const std::vector<Bin>& bin
     if (prior.has_value()) {
         p0 = *prior;
     } else {
-        long total_obs = 0, total_bads = 0;
+        double total_obs = 0, total_bads = 0;
         for (const auto& b : bins) {
             total_obs += b.n_obs;
             total_bads += b.n_bads;
         }
-        p0 = static_cast<double>(total_bads) / static_cast<double>(total_obs);
+        p0 = total_bads / total_obs;
     }
 
     std::vector<CalibratedBin> result;
     result.reserve(bins.size());
     for (const auto& b : bins) {
-        double pd = (static_cast<double>(b.n_bads) + k * p0) / (static_cast<double>(b.n_obs) + k);
-        result.push_back(CalibratedBin{b.score_min, b.score_max, b.n_obs, b.n_bads, pd});
+        double pd = (b.n_bads + k * p0) / (b.n_obs + k);
+        result.push_back(CalibratedBin{b.score_min, b.score_max, b.n_obs, b.n_bads,
+                                        b.count, b.count_bads, pd});
     }
     return result;
 }
@@ -238,11 +280,25 @@ double interpolate_pd(const std::vector<CalibratedBin>& bins, double score) {
 
 double CalibrationResult::pd_for_score(double score) const { return interpolate_pd(bands, score); }
 
-CalibrationResult run_pipeline(const std::vector<std::pair<double, int>>& observations, double k,
-                                long min_obs, long min_bads, std::optional<double> prior,
-                                bool increasing, std::optional<double> min_confidence) {
+CalibrationResult run_pipeline(const std::vector<std::tuple<double, int, double>>& observations,
+                                double k, double min_obs, double min_bads,
+                                std::optional<double> prior, bool increasing,
+                                std::optional<double> min_confidence, bool use_counts) {
     std::vector<Bin> pooled = calibrate(observations, increasing, min_confidence);
-    std::vector<Bin> sized = enforce_minimum_size(pooled, min_obs, min_bads, increasing, min_confidence);
+    std::vector<Bin> sized = enforce_minimum_size(pooled, min_obs, min_bads, increasing,
+                                                   min_confidence, use_counts);
+    std::vector<CalibratedBin> calibrated = apply_bayesian_adjustment(sized, k, prior);
+    std::vector<CalibratedBin> repooled = repool_calibrated_bins(calibrated, increasing);
+    return CalibrationResult{std::move(repooled)};
+}
+
+CalibrationResult run_pipeline(const std::vector<std::pair<double, int>>& observations, double k,
+                                double min_obs, double min_bads, std::optional<double> prior,
+                                bool increasing, std::optional<double> min_confidence,
+                                bool use_counts) {
+    std::vector<Bin> pooled = calibrate(observations, increasing, min_confidence);
+    std::vector<Bin> sized = enforce_minimum_size(pooled, min_obs, min_bads, increasing,
+                                                   min_confidence, use_counts);
     std::vector<CalibratedBin> calibrated = apply_bayesian_adjustment(sized, k, prior);
     std::vector<CalibratedBin> repooled = repool_calibrated_bins(calibrated, increasing);
     return CalibrationResult{std::move(repooled)};

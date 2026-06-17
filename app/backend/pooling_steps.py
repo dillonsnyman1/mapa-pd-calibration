@@ -21,14 +21,22 @@ from schemas import PdStep, PdStepBin, Step, StepBin  # noqa: E402
 
 def _snapshot(stack: List[Bin]) -> List[StepBin]:
     return [
-        StepBin(score_min=b.score_min, score_max=b.score_max, n_obs=b.n_obs, n_bads=b.n_bads, bad_rate=b.bad_rate)
+        StepBin(
+            score_min=b.score_min, score_max=b.score_max,
+            n_obs=b.n_obs, n_bads=b.n_bads, bad_rate=b.bad_rate,
+            count=b.count, count_bads=b.count_bads,
+        )
         for b in stack
     ]
 
 
 def _pd_snapshot(stack: List[CalibratedBin]) -> List[PdStepBin]:
     return [
-        PdStepBin(score_min=b.score_min, score_max=b.score_max, n_obs=b.n_obs, n_bads=b.n_bads, pd=b.pd)
+        PdStepBin(
+            score_min=b.score_min, score_max=b.score_max,
+            n_obs=b.n_obs, n_bads=b.n_bads, pd=b.pd,
+            count=b.count, count_bads=b.count_bads,
+        )
         for b in stack
     ]
 
@@ -71,7 +79,7 @@ def pooling_steps(bins: List[Bin], increasing: bool, min_confidence: Optional[fl
     return steps
 
 
-def minimum_size_steps(bins: List[Bin], min_obs: int, min_bads: int) -> List[Step]:
+def minimum_size_steps(bins: List[Bin], min_obs: float, min_bads: float, use_counts: bool = True) -> List[Step]:
     """Trace the size-violation merges from `enforce_minimum_size`'s while loop.
 
     Mirrors the loop in reference/python/mapa.py's `enforce_minimum_size`,
@@ -82,9 +90,15 @@ def minimum_size_steps(bins: List[Bin], min_obs: int, min_bads: int) -> List[Ste
     bins = list(bins)
     steps: List[Step] = [Step(action="push", stack=_snapshot(bins))]
 
+    def _obs(b: Bin) -> float:
+        return b.count if use_counts else b.n_obs
+
+    def _bads(b: Bin) -> float:
+        return b.count_bads if use_counts else b.n_bads
+
     while len(bins) > 1:
         violator = next(
-            (i for i, b in enumerate(bins) if b.n_obs < min_obs or b.n_bads < min_bads),
+            (i for i, b in enumerate(bins) if _obs(b) < min_obs or _bads(b) < min_bads),
             None,
         )
         if violator is None:
@@ -100,12 +114,19 @@ def minimum_size_steps(bins: List[Bin], min_obs: int, min_bads: int) -> List[Ste
             right_diff = abs(rate - bins[violator + 1].bad_rate)
             neighbour = violator - 1 if left_diff <= right_diff else violator + 1
 
-        shortfall = "n_obs" if bins[violator].n_obs < min_obs else "n_bads"
-        shortfall_value = bins[violator].n_obs if shortfall == "n_obs" else bins[violator].n_bads
-        threshold = min_obs if shortfall == "n_obs" else min_bads
+        obs_label = "count" if use_counts else "n_obs"
+        bads_label = "count_bads" if use_counts else "n_bads"
+        if _obs(bins[violator]) < min_obs:
+            shortfall = obs_label
+            shortfall_value = _obs(bins[violator])
+            threshold = min_obs
+        else:
+            shortfall = bads_label
+            shortfall_value = _bads(bins[violator])
+            threshold = min_bads
         reason = (
             f"Band {bins[violator].score_min:g}-{bins[violator].score_max:g} has "
-            f"{shortfall}={shortfall_value} (below the minimum of {threshold}); "
+            f"{shortfall}={shortfall_value:g} (below the minimum of {threshold:g}); "
             f"merged into its closer-rate neighbour at "
             f"{bins[neighbour].score_min:g}-{bins[neighbour].score_max:g}"
         )

@@ -13,13 +13,13 @@ from mapa import CalibratedBin, run_pipeline, interpolate_pd  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "reference" / "fixtures"
 
-Observation = Tuple[float, int]
+Observation = Tuple[float, int, float]
 
 
 def load_example_observations() -> List[Observation]:
     with open(FIXTURES_DIR / "raw_observations.csv", newline="") as f:
         reader = csv.DictReader(f)
-        return [(float(row["score"]), int(row["bad"])) for row in reader]
+        return [(float(row["score"]), int(row["bad"]), 1.0) for row in reader]
 
 
 def compute_smoothed(bands: List[CalibratedBin], num_points: int = 200) -> list[tuple[float, float]]:
@@ -35,11 +35,12 @@ def compute_smoothed(bands: List[CalibratedBin], num_points: int = 200) -> list[
 
 def run_calibration(
     observations: List[Observation],
-    min_obs: int,
-    min_bads: int,
+    min_obs: float,
+    min_bads: float,
     k: float,
     min_confidence: float | None,
     increasing: bool,
+    use_counts: bool = True,
     num_smoothed_points: int = 200,
 ) -> tuple[list[CalibratedBin], list[tuple[float, float]]]:
     result = run_pipeline(
@@ -49,6 +50,7 @@ def run_calibration(
         min_bads=min_bads,
         increasing=increasing,
         min_confidence=min_confidence,
+        use_counts=use_counts,
     )
 
     bands = result.bands

@@ -4,7 +4,7 @@ import { BacktestChart } from "./components/BacktestChart";
 import { CalibrationChart } from "./components/CalibrationChart";
 import { ControlsPanel } from "./components/ControlsPanel";
 import { PipelineView } from "./components/PipelineView";
-import type { CalibrationParams, CalibrationResponse, Observation, PipelineResponse } from "./types";
+import type { CalibrationParams, CalibrationResponse, Observation, PipelineResponse, WeightingMode } from "./types";
 
 const DEFAULT_PARAMS: CalibrationParams = {
   min_obs: 50,
@@ -12,6 +12,7 @@ const DEFAULT_PARAMS: CalibrationParams = {
   k: 10,
   min_confidence: null,
   increasing: false,
+  use_counts_for_thresholds: true,
 };
 
 function useDebounced<T>(value: T, delayMs: number): T {
@@ -25,11 +26,25 @@ function useDebounced<T>(value: T, delayMs: number): T {
 
 export default function App() {
   const [params, setParams] = useState<CalibrationParams>(DEFAULT_PARAMS);
+  const [weightingMode, setWeightingMode] = useState<WeightingMode>("number");
+  const [rawObservations, setRawObservations] = useState<Observation[] | null>(null);
   const [observations, setObservations] = useState<Observation[] | null>(null);
   const [exampleCount, setExampleCount] = useState<number | null>(null);
   const [calibration, setCalibration] = useState<CalibrationResponse | null>(null);
   const [pipeline, setPipeline] = useState<PipelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (rawObservations === null) {
+      setObservations(null);
+      return;
+    }
+    if (weightingMode === "number") {
+      setObservations(rawObservations.map(([s, b]) => [s, b, 1]));
+    } else {
+      setObservations(rawObservations);
+    }
+  }, [rawObservations, weightingMode]);
 
   const debouncedParams = useDebounced(params, 300);
   const debouncedObservations = useDebounced(observations, 300);
@@ -73,10 +88,12 @@ export default function App() {
         <ControlsPanel
           params={params}
           onParamsChange={setParams}
-          onObservationsChange={setObservations}
+          onObservationsChange={setRawObservations}
           onError={setError}
           datasetLabel={datasetLabel}
           error={error}
+          weightingMode={weightingMode}
+          onWeightingModeChange={setWeightingMode}
         />
       </div>
 

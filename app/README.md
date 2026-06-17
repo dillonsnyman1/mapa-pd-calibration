@@ -44,5 +44,11 @@ Runs on `http://localhost:5173` and talks to the backend at
 - Adjust `min_obs`, `min_bads`, `k`, the monotonicity direction, or enable
   confidence-based pooling - the calibration chart and pooling stepper
   update accordingly.
-- Upload a CSV with `score,bad` columns to run the pipeline on your own
-  data instead.
+- Switch between "Number weighted" and "Value weighted" mode to control how
+  observations are aggregated. In value-weighted mode, upload a CSV with
+  `score,bad,weight` columns (weight is typically exposure at default). An
+  additional checkbox, "Apply minimum thresholds to weighted sums", appears
+  in value-weighted mode to control whether `min_obs`/`min_bads` check raw
+  counts or weighted sums.
+- Upload a CSV with `score,bad` columns (and optionally `weight`) to run
+  the pipeline on your own data instead.

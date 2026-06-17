@@ -54,6 +54,7 @@ The script prints each test result and finishes with `All tests passed.`
 addpath('/path/to/reference/matlab');
 
 % Load raw observations — a table with columns `score` and `bad`
+% (and optionally `weight` — see "Value-weighted observations" below)
 obs = readtable('my_observations.csv');
 
 % 1. Group into one bin per unique score
@@ -90,6 +91,21 @@ disp(pipeline.bands)
 pipeline.pd_for_score(550)
 ```
 
+### Value-weighted observations
+
+If the input table (or N-by-3 matrix) contains a `weight` column,
+observations are value-weighted. Without it, all weights default to 1
+(number-weighted) and `n_obs`/`n_bads` equal `count`/`count_bads`.
+
+```matlab
+% Value-weighted: table or N-by-3 matrix [score, bad, weight]
+obs = readtable('my_weighted_observations.csv');  % has score, bad, weight
+pipeline = run_pipeline(obs, 10, 50, 10, [], false, [], true);  % use_counts=true
+```
+
+The z-test in confidence-based pooling always uses `count`/`count_bads`
+for sample sizes.
+
 ## Optional parameters
 
 | Parameter | Function(s) | Default | Meaning |
@@ -97,6 +113,7 @@ pipeline.pd_for_score(550)
 | `increasing` | `mapa_pool`, `mapa_calibrate`, `enforce_minimum_size`, `repool_calibrated_bins`, `run_pipeline` | `false` | `true` makes bad rate non-decreasing (higher score = higher risk) |
 | `min_confidence` | `mapa_pool`, `mapa_calibrate`, `enforce_minimum_size`, `run_pipeline` | `[]` (disabled) | Confidence level (e.g. `0.95`) for the two-proportion z-test; adjacent bins whose rates are not significantly different are merged |
 | `prior` | `apply_bayesian_adjustment`, `run_pipeline` | `[]` (overall bad rate) | PD to shrink toward in Bayesian adjustment |
+| `use_counts` | `enforce_minimum_size`, `run_pipeline` | `true` | When `true`, `min_obs`/`min_bads` thresholds check raw observation counts (`count`/`count_bads`); when `false`, they check weighted sums (`n_obs`/`n_bads`) |
 
 All optional arguments can be omitted or passed as `[]` to use their defaults.
 
@@ -108,8 +125,10 @@ Bins are MATLAB `table` objects with these variables:
 |----------|------|-------|
 | `score_min` | double | Lower bound of the score band |
 | `score_max` | double | Upper bound of the score band |
-| `n_obs` | double | Total observations in the band |
-| `n_bads` | double | Number of defaults (bad == 1) |
+| `n_obs` | double | Weighted sum of observations in the band |
+| `n_bads` | double | Weighted sum of defaults (bad == 1) |
+| `count` | double | Raw number of observations in the band |
+| `count_bads` | double | Raw number of defaults (bad == 1) |
 | `pd` | double | Bayesian-adjusted PD (calibrated bins only) |
 
 ## Naming note

@@ -12,6 +12,13 @@
    - ../fixtures/expected_smoothed_pds.csv
    - ../fixtures/expected_pooled_bins_confidence.csv     (min_confidence=0.95)
 
+ Value-weighted pipeline (uses raw_observations_weighted.csv):
+   - ../fixtures/expected_initial_bins_weighted.csv
+   - ../fixtures/expected_pooled_bins_weighted.csv
+   - ../fixtures/expected_min_size_bins_weighted.csv
+   - ../fixtures/expected_repooled_calibrated_bins_weighted.csv
+   - ../fixtures/expected_smoothed_pds_weighted.csv
+
  Update FIXTURES_PATH below to the absolute path of the `reference/fixtures`
  directory on whatever system you're running this on (e.g. SAS OnDemand for
  Academics).
@@ -86,5 +93,63 @@ proc print data=pipeline_smoothed_pds noobs; run;
 
 title "Pooled bins with confidence-based pooling (min_confidence=0.95) - compare to expected_pooled_bins_confidence.csv";
 proc print data=pooled_bins_confidence noobs; run;
+
+/* =========================================================================
+   Value-weighted pipeline
+   ========================================================================= */
+
+filename raw_w "&fixtures_path./raw_observations_weighted.csv";
+
+proc import datafile=raw_w out=raw_obs_weighted dbms=csv replace;
+    getnames=yes;
+run;
+
+/* Weighted Step 1: bin raw observations (weight column detected automatically) */
+%mapa_bins_from_observations(in=raw_obs_weighted, out=initial_bins_w)
+
+/* Weighted Step 2: pool */
+%mapa_pool(in=initial_bins_w, out=pooled_bins_w)
+
+/* Weighted Step 3: enforce minimum size (use_counts=1, thresholds on raw counts) */
+%mapa_enforce_minimum_size(in=pooled_bins_w, out=sized_bins_w, min_obs=50, min_bads=10, use_counts=1)
+
+/* Weighted Step 4: Bayesian adjustment */
+%mapa_bayesian_adjustment(in=sized_bins_w, out=calibrated_bins_w, k=10)
+
+/* Weighted Step 5: re-pool */
+%mapa_repool_calibrated(in=calibrated_bins_w, out=repooled_calibrated_bins_w)
+
+/* Weighted Step 6: smoothed PDs */
+proc sql;
+    create table scores_w as
+    select distinct score as score from raw_obs_weighted order by score;
+quit;
+
+%mapa_interpolate_pd(bins=repooled_calibrated_bins_w, scores=scores_w, out=smoothed_pds_w)
+
+/* Weighted run_pipeline in one call */
+%mapa_run_pipeline(in=raw_obs_weighted, out_bands=pipeline_bands_w, k=10, min_obs=50, min_bads=10,
+                    scores=scores_w, out_smoothed=pipeline_smoothed_pds_w, use_counts=1)
+
+title "Weighted initial bins - compare to expected_initial_bins_weighted.csv";
+proc print data=initial_bins_w noobs; run;
+
+title "Weighted pooled bins - compare to expected_pooled_bins_weighted.csv";
+proc print data=pooled_bins_w noobs; run;
+
+title "Weighted sized bins (min_obs=50, min_bads=10, use_counts=1) - compare to expected_min_size_bins_weighted.csv";
+proc print data=sized_bins_w noobs; run;
+
+title "Weighted repooled calibrated bins - compare to expected_repooled_calibrated_bins_weighted.csv";
+proc print data=repooled_calibrated_bins_w noobs; run;
+
+title "Weighted smoothed PDs - compare to expected_smoothed_pds_weighted.csv";
+proc print data=smoothed_pds_w noobs; run;
+
+title "Weighted pipeline bands - compare to expected_repooled_calibrated_bins_weighted.csv";
+proc print data=pipeline_bands_w noobs; run;
+
+title "Weighted pipeline smoothed PDs - compare to expected_smoothed_pds_weighted.csv";
+proc print data=pipeline_smoothed_pds_w noobs; run;
 
 title;

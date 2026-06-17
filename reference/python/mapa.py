@@ -42,12 +42,20 @@ from typing import Iterable, List, Optional, Tuple
 @dataclass
 class Bin:
     """A score band spanning [score_min, score_max], with its observation
-    and bad counts."""
+    and bad counts (possibly weighted)."""
 
     score_min: float
     score_max: float
-    n_obs: int
-    n_bads: int
+    n_obs: float
+    n_bads: float
+    count: int = -1
+    count_bads: int = -1
+
+    def __post_init__(self) -> None:
+        if self.count == -1:
+            self.count = int(self.n_obs)
+        if self.count_bads == -1:
+            self.count_bads = int(self.n_bads)
 
     @property
     def bad_rate(self) -> float:
@@ -61,9 +69,17 @@ class CalibratedBin:
 
     score_min: float
     score_max: float
-    n_obs: int
-    n_bads: int
+    n_obs: float
+    n_bads: float
     pd: float
+    count: int = -1
+    count_bads: int = -1
+
+    def __post_init__(self) -> None:
+        if self.count == -1:
+            self.count = int(self.n_obs)
+        if self.count_bads == -1:
+            self.count_bads = int(self.n_bads)
 
 
 @dataclass
@@ -84,24 +100,38 @@ class CalibrationResult:
         return interpolate_pd(self.bands, score)
 
 
-def bins_from_observations(observations: Iterable[Tuple[float, int]]) -> List[Bin]:
-    """Group raw (score, bad) observations into one bin per unique score,
-    ordered by score ascending. This is the finest possible starting point
-    for `mapa`.
+def bins_from_observations(observations: Iterable[tuple]) -> List[Bin]:
+    """Group raw observations into one bin per unique score, ordered by
+    score ascending. This is the finest possible starting point for `mapa`.
 
     Args:
-        observations: An iterable of (score, bad) pairs, where `bad` is 1
-            for a default and 0 otherwise.
+        observations: An iterable of (score, bad) pairs or (score, bad,
+            weight) triples. `bad` is 1 for a default and 0 otherwise.
+            When `weight` is provided, `n_obs` and `n_bads` become
+            weighted sums; `count` and `count_bads` track the raw
+            (unweighted) observation and default counts.
     """
-    counts: dict[float, list[int]] = defaultdict(lambda: [0, 0])
-    for score, bad in observations:
-        entry = counts[score]
-        entry[0] += 1
-        entry[1] += int(bad)
+    accum: dict[float, list[float]] = defaultdict(lambda: [0.0, 0.0, 0, 0])
+    for obs in observations:
+        score = float(obs[0])
+        bad = int(obs[1])
+        weight = float(obs[2]) if len(obs) > 2 else 1.0
+        entry = accum[score]
+        entry[0] += weight
+        entry[1] += bad * weight
+        entry[2] += 1
+        entry[3] += bad
 
     return [
-        Bin(score_min=score, score_max=score, n_obs=n_obs, n_bads=n_bads)
-        for score, (n_obs, n_bads) in sorted(counts.items())
+        Bin(
+            score_min=score,
+            score_max=score,
+            n_obs=n_obs,
+            n_bads=n_bads,
+            count=int(count),
+            count_bads=int(count_bads),
+        )
+        for score, (n_obs, n_bads, count, count_bads) in sorted(accum.items())
     ]
 
 
@@ -149,7 +179,7 @@ def mapa(
 
 
 def calibrate(
-    observations: Iterable[Tuple[float, int]],
+    observations: Iterable[tuple],
     increasing: bool = False,
     min_confidence: Optional[float] = None,
 ) -> List[Bin]:
@@ -160,36 +190,41 @@ def calibrate(
 
 def enforce_minimum_size(
     bins: List[Bin],
-    min_obs: int = 0,
-    min_bads: int = 0,
+    min_obs: float = 0,
+    min_bads: float = 0,
     increasing: bool = False,
     min_confidence: Optional[float] = None,
+    use_counts: bool = True,
 ) -> List[Bin]:
     """Further pool bins that don't meet minimum size thresholds, even if
     they don't violate monotonicity.
 
-    A bin "violates" if `n_obs < min_obs` or `n_bads < min_bads`. Each
-    violating bin is repeatedly merged into whichever adjacent bin has the
-    closer bad rate (minimizing the distortion to the calibration curve),
-    until every remaining bin meets both thresholds or only one bin
-    remains.
-
-    Merging toward the closer-rate neighbour is not guaranteed to preserve
-    the monotonicity established by `mapa`, so the result is passed back
-    through `mapa` before being returned.
+    A bin "violates" if its observation or bad measure falls below the
+    threshold. Each violating bin is repeatedly merged into whichever
+    adjacent bin has the closer bad rate, until every remaining bin meets
+    both thresholds or only one bin remains.
 
     Args:
         bins: Pooled bins, in score order, typically the output of `mapa`.
-        min_obs: Minimum number of observations required per bin.
-        min_bads: Minimum number of bads required per bin.
+        min_obs: Minimum observations (or weighted sum) required per bin.
+        min_bads: Minimum bads (or weighted sum) required per bin.
         increasing: Passed through to the final `mapa` pass; see `mapa`.
         min_confidence: Passed through to the final `mapa` pass; see `mapa`.
+        use_counts: If True (default), check thresholds against raw
+            observation/bad counts. If False, check against weighted sums
+            (n_obs/n_bads). For number-weighted data both are identical.
     """
     bins = list(bins)
 
+    def _obs(b: Bin) -> float:
+        return b.count if use_counts else b.n_obs
+
+    def _bads(b: Bin) -> float:
+        return b.count_bads if use_counts else b.n_bads
+
     while len(bins) > 1:
         violator = next(
-            (i for i, b in enumerate(bins) if b.n_obs < min_obs or b.n_bads < min_bads),
+            (i for i, b in enumerate(bins) if _obs(b) < min_obs or _bads(b) < min_bads),
             None,
         )
         if violator is None:
@@ -256,6 +291,8 @@ def apply_bayesian_adjustment(
             n_obs=b.n_obs,
             n_bads=b.n_bads,
             pd=(b.n_bads + k * prior) / (b.n_obs + k),
+            count=b.count,
+            count_bads=b.count_bads,
         )
         for b in bins
     ]
@@ -297,35 +334,30 @@ def repool_calibrated_bins(
 
 
 def run_pipeline(
-    observations: Iterable[Tuple[float, int]],
+    observations: Iterable[tuple],
     k: float,
-    min_obs: int = 0,
-    min_bads: int = 0,
+    min_obs: float = 0,
+    min_bads: float = 0,
     prior: Optional[float] = None,
     increasing: bool = False,
     min_confidence: Optional[float] = None,
+    use_counts: bool = True,
 ) -> CalibrationResult:
     """Run the full MAPA pipeline: bin, pool, enforce minimum size, apply
     Bayesian adjustment, and re-pool.
 
-    This chains `calibrate`, `enforce_minimum_size`,
-    `apply_bayesian_adjustment` and `repool_calibrated_bins`. The result
-    bundles the resulting band table (`bands`) together with a smoothed,
-    continuous PD curve derived from it (`pd_for_score`, via
-    `interpolate_pd`) - use whichever representation suits the consumer.
-
     Args:
-        observations: Raw (score, bad) observations; see
-            `bins_from_observations`.
+        observations: Raw observations; see `bins_from_observations`.
         k: Bayesian credibility weight; see `apply_bayesian_adjustment`.
         min_obs: Minimum observations per bin; see `enforce_minimum_size`.
         min_bads: Minimum bads per bin; see `enforce_minimum_size`.
         prior: PD to shrink toward; see `apply_bayesian_adjustment`.
         increasing: Direction of monotonicity; see `mapa`.
         min_confidence: Confidence-based pooling threshold; see `mapa`.
+        use_counts: See `enforce_minimum_size`.
     """
     pooled = calibrate(observations, increasing, min_confidence)
-    sized = enforce_minimum_size(pooled, min_obs, min_bads, increasing, min_confidence)
+    sized = enforce_minimum_size(pooled, min_obs, min_bads, increasing, min_confidence, use_counts)
     calibrated = apply_bayesian_adjustment(sized, k, prior)
     repooled = repool_calibrated_bins(calibrated, increasing)
     return CalibrationResult(bands=repooled)
@@ -394,11 +426,11 @@ def _not_significant(a: Bin, b: Bin, confidence: float) -> bool:
     rates are genuinely close, or because both bins are too small to tell
     them apart.
     """
-    pooled_rate = (a.n_bads + b.n_bads) / (a.n_obs + b.n_obs)
+    pooled_rate = (a.count_bads + b.count_bads) / (a.count + b.count)
     if pooled_rate <= 0 or pooled_rate >= 1:
         return True
 
-    se = math.sqrt(pooled_rate * (1 - pooled_rate) * (1 / a.n_obs + 1 / b.n_obs))
+    se = math.sqrt(pooled_rate * (1 - pooled_rate) * (1 / a.count + 1 / b.count))
     z = abs(a.bad_rate - b.bad_rate) / se
     z_critical = _inverse_normal_cdf((1 + confidence) / 2)
     return z < z_critical
@@ -454,6 +486,8 @@ def _merge(a: Bin, b: Bin) -> Bin:
         score_max=b.score_max,
         n_obs=a.n_obs + b.n_obs,
         n_bads=a.n_bads + b.n_bads,
+        count=a.count + b.count,
+        count_bads=a.count_bads + b.count_bads,
     )
 
 
@@ -473,4 +507,6 @@ def _merge_calibrated(a: CalibratedBin, b: CalibratedBin) -> CalibratedBin:
         n_obs=n_obs,
         n_bads=n_bads,
         pd=(a.pd * a.n_obs + b.pd * b.n_obs) / n_obs,
+        count=a.count + b.count,
+        count_bads=a.count_bads + b.count_bads,
     )

@@ -13,6 +13,7 @@ algorithm description.
 #include "mapa.hpp"
 
 // Raw (score, bad) observations - bad = 1 for a default, 0 otherwise.
+// See "Value-weighted observations" below for the (score, bad, weight) variant.
 std::vector<std::pair<double, int>> observations = {
     {400, 1},
     {400, 0},
@@ -55,10 +56,18 @@ bad rate is monotone. If you already have pre-aggregated score bands, call
 `mapa` directly on a `std::vector<Bin>` with `score_min`/`score_max` set to
 each band's range.
 
+Bins carry two sets of counts: `n_obs`/`n_bads` (`double` - weighted sums)
+and `count`/`count_bads` (`long` - raw observation counts). For unweighted
+observations they are identical.
+
 `enforce_minimum_size` is an optional step that further pools any bands
 falling short of the given `min_obs`/`min_bads` thresholds, merging each
 into whichever neighbour has the closer bad rate, then re-pooling to
 restore monotonicity. With the default thresholds (0, 0) it's a no-op.
+The `use_counts` parameter (default `true`) controls whether the
+thresholds are checked against the raw observation counts
+(`count`/`count_bads`) or against the weighted sums
+(`n_obs`/`n_bads`).
 
 `apply_bayesian_adjustment` is an optional step that shrinks each band's
 bad rate toward a prior (by default the overall bad rate) using
@@ -84,7 +93,8 @@ monotonicity.
 `run_pipeline` chains all of the above (`calibrate`, `enforce_minimum_size`,
 `apply_bayesian_adjustment`, `repool_calibrated_bins`) and returns a
 `CalibrationResult` bundling both outputs: `bands` (the band table) and
-`pd_for_score()` (smoothed PDs via `interpolate_pd`). Use whichever
+`pd_for_score()` (smoothed PDs via `interpolate_pd`). The `use_counts`
+parameter is passed through to `enforce_minimum_size`. Use whichever
 representation suits the consumer.
 
 ### Confidence-based pooling
@@ -102,6 +112,28 @@ std::vector<mapa::Bin> pooled = mapa::mapa(initial_bins, /*increasing=*/false, /
 This produces fewer, larger bins whose bad rates are more reliably
 distinguishable from their neighbours. With the default (`std::nullopt`),
 only monotonicity violations are merged, as before.
+
+### Value-weighted observations
+
+Observations can carry an optional weight (typically exposure at default).
+Pass a `std::vector<std::tuple<double, int, double>>` instead of the
+default `std::vector<std::pair<double, int>>`:
+
+```cpp
+// Value-weighted observations: (score, bad, weight)
+std::vector<std::tuple<double, int, double>> weighted_obs = {
+    {400, 1, 50000.0},
+    {400, 0, 120000.0},
+    {405, 0, 85000.0},
+    // ...
+};
+mapa::CalibrationResult result = mapa::run_pipeline(weighted_obs, 10.0, 50, 10);
+```
+
+When weights are provided, `Bin.n_obs`/`n_bads` are `double` (weighted
+sums) and `Bin.count`/`count_bads` are `long` (raw observation counts).
+For unweighted observations the two sets are identical. The z-test in
+confidence-based pooling always uses `count`/`count_bads` for sample sizes.
 
 ## Building and running the tests
 

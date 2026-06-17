@@ -31,6 +31,7 @@ Rscript test_mapa.R
 source("mapa.R")
 
 # Load raw observations — a data.frame with columns `score` and `bad`
+# (and optionally `weight` — see "Value-weighted observations" below)
 obs <- read.csv("my_observations.csv")
 
 # 1. Group into one bin per unique score
@@ -67,6 +68,21 @@ print(pipeline$bands)
 pipeline$pd_for_score(550)
 ```
 
+### Value-weighted observations
+
+If the input `data.frame` contains a `weight` column, observations are
+value-weighted. Without it, all weights default to 1 (number-weighted)
+and `n_obs`/`n_bads` equal `count`/`count_bads`.
+
+```r
+# Value-weighted: data.frame with score, bad, weight columns
+obs <- read.csv("my_weighted_observations.csv")  # has score, bad, weight
+pipeline <- run_pipeline(obs, k = 10, min_obs = 50, min_bads = 10, use_counts = TRUE)
+```
+
+The z-test in confidence-based pooling always uses `count`/`count_bads`
+for sample sizes.
+
 ## Optional parameters
 
 | Parameter | Function(s) | Default | Meaning |
@@ -74,6 +90,7 @@ pipeline$pd_for_score(550)
 | `increasing` | `mapa`, `calibrate`, `enforce_minimum_size`, `repool_calibrated_bins`, `run_pipeline` | `FALSE` | `TRUE` makes bad rate non-decreasing (higher score = higher risk) |
 | `min_confidence` | `mapa`, `calibrate`, `enforce_minimum_size`, `run_pipeline` | `NULL` | Confidence level (e.g. `0.95`) for the two-proportion z-test; adjacent bins whose rates are not significantly different are merged |
 | `prior` | `apply_bayesian_adjustment`, `run_pipeline` | `NULL` (overall bad rate) | PD to shrink toward in Bayesian adjustment |
+| `use_counts` | `enforce_minimum_size`, `run_pipeline` | `TRUE` | When `TRUE`, `min_obs`/`min_bads` thresholds check raw observation counts (`count`/`count_bads`); when `FALSE`, they check weighted sums (`n_obs`/`n_bads`) |
 
 ## Bin data structure
 
@@ -83,6 +100,8 @@ Bins are plain `data.frame`s with these columns:
 |--------|------|-------|
 | `score_min` | numeric | Lower bound of the score band |
 | `score_max` | numeric | Upper bound of the score band |
-| `n_obs` | integer | Total observations in the band |
-| `n_bads` | integer | Number of defaults (bad == 1) |
+| `n_obs` | numeric | Weighted sum of observations in the band |
+| `n_bads` | numeric | Weighted sum of defaults (bad == 1) |
+| `count` | integer | Raw number of observations in the band |
+| `count_bads` | integer | Raw number of defaults (bad == 1) |
 | `pd` | numeric | Bayesian-adjusted PD (calibrated bins only) |

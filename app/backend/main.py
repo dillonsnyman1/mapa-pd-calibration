@@ -64,6 +64,7 @@ def calibrate(request: CalibrationRequest) -> CalibrationResponse:
         k=params.k,
         min_confidence=params.min_confidence,
         increasing=params.increasing,
+        use_counts=params.use_counts_for_thresholds,
     )
 
     actual_bins = bins_from_observations(observations)
@@ -93,7 +94,7 @@ def pipeline_endpoint(request: PipelineRequest) -> PipelineResponse:
     pooled = mapa(initial_bins, params.increasing, params.min_confidence)
     pooling_stage = pooling_steps(initial_bins, params.increasing, params.min_confidence)
 
-    size_steps = minimum_size_steps(pooled, params.min_obs, params.min_bads)
+    size_steps = minimum_size_steps(pooled, params.min_obs, params.min_bads, params.use_counts_for_thresholds)
     sized_intermediate = _bins_from_step(size_steps[-1])
     resize_steps = pooling_steps(sized_intermediate, params.increasing, params.min_confidence)
     sized = mapa(sized_intermediate, params.increasing, params.min_confidence)
@@ -132,7 +133,11 @@ def pipeline_endpoint(request: PipelineRequest) -> PipelineResponse:
 
 
 def _bins_from_step(step: Step) -> list[Bin]:
-    return [Bin(score_min=b.score_min, score_max=b.score_max, n_obs=b.n_obs, n_bads=b.n_bads) for b in step.stack]
+    return [
+        Bin(score_min=b.score_min, score_max=b.score_max, n_obs=b.n_obs, n_bads=b.n_bads,
+            count=b.count, count_bads=b.count_bads)
+        for b in step.stack
+    ]
 
 
 # AWS Lambda entrypoint via API Gateway HTTP API proxy integration.

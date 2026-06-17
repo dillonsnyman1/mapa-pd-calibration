@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -8,15 +9,20 @@ namespace mapa {
 
 // A score band spanning [score_min, score_max], with its observation and
 // bad counts.
+//
+// n_obs / n_bads are weighted sums (equal to count / count_bads when every
+// observation has weight 1).  count / count_bads are raw observation counts,
+// used for statistical tests (z-test sample sizes) and minimum-size checks
+// when use_counts is true.
 struct Bin {
     double score_min;
     double score_max;
-    long n_obs;
-    long n_bads;
+    double n_obs;
+    double n_bads;
+    long count;
+    long count_bads;
 
-    double bad_rate() const {
-        return static_cast<double>(n_bads) / static_cast<double>(n_obs);
-    }
+    double bad_rate() const { return n_bads / n_obs; }
 };
 
 // A pooled bin together with its Bayesian-adjusted PD, as produced by
@@ -24,8 +30,10 @@ struct Bin {
 struct CalibratedBin {
     double score_min;
     double score_max;
-    long n_obs;
-    long n_bads;
+    double n_obs;
+    double n_bads;
+    long count;
+    long count_bads;
     double pd;
 };
 
@@ -43,9 +51,13 @@ struct CalibrationResult {
     double pd_for_score(double score) const;
 };
 
-// Groups raw (score, bad) observations into one bin per unique score,
+// Groups raw (score, bad, weight) observations into one bin per unique score,
 // ordered by score ascending. This is the finest possible starting point
-// for mapa(). `bad` should be 1 for a default and 0 otherwise.
+// for mapa(). `bad` should be 1 for a default and 0 otherwise. `weight` is
+// the value weight of the observation (e.g. exposure at default).
+std::vector<Bin> bins_from_observations(const std::vector<std::tuple<double, int, double>>& observations);
+
+// Convenience overload for unweighted observations (weight = 1 for all).
 std::vector<Bin> bins_from_observations(const std::vector<std::pair<double, int>>& observations);
 
 // Monotone Adjacent Pooling Algorithm.
@@ -71,8 +83,13 @@ std::vector<Bin> bins_from_observations(const std::vector<std::pair<double, int>
 std::vector<Bin> mapa(const std::vector<Bin>& bins, bool increasing = false,
                        std::optional<double> min_confidence = std::nullopt);
 
-// Convenience wrapper: group raw observations into per-score bins, then
-// pool them with mapa().
+// Convenience wrapper: group raw weighted observations into per-score bins,
+// then pool them with mapa().
+std::vector<Bin> calibrate(const std::vector<std::tuple<double, int, double>>& observations,
+                            bool increasing = false,
+                            std::optional<double> min_confidence = std::nullopt);
+
+// Convenience overload for unweighted observations (weight = 1 for all).
 std::vector<Bin> calibrate(const std::vector<std::pair<double, int>>& observations,
                             bool increasing = false,
                             std::optional<double> min_confidence = std::nullopt);
@@ -80,10 +97,13 @@ std::vector<Bin> calibrate(const std::vector<std::pair<double, int>>& observatio
 // Further pool bins that don't meet minimum size thresholds, even if they
 // don't violate monotonicity.
 //
-// A bin "violates" if n_obs < min_obs or n_bads < min_bads. Each violating
-// bin is repeatedly merged into whichever adjacent bin has the closer bad
-// rate (minimizing the distortion to the calibration curve), until every
-// remaining bin meets both thresholds or only one bin remains.
+// When `use_counts` is true (the default), a bin "violates" if
+// count < min_obs or count_bads < min_bads (raw observation counts).
+// When false, the weighted sums n_obs and n_bads are compared instead.
+//
+// Each violating bin is repeatedly merged into whichever adjacent bin has
+// the closer bad rate (minimizing the distortion to the calibration curve),
+// until every remaining bin meets both thresholds or only one bin remains.
 //
 // Merging toward the closer-rate neighbour is not guaranteed to preserve
 // the monotonicity established by mapa(), so the result is passed back
@@ -93,9 +113,10 @@ std::vector<Bin> calibrate(const std::vector<std::pair<double, int>>& observatio
 // `min_confidence` is forwarded to that final pass; see mapa().
 //
 // `bins` is typically the output of mapa().
-std::vector<Bin> enforce_minimum_size(const std::vector<Bin>& bins, long min_obs = 0,
-                                       long min_bads = 0, bool increasing = false,
-                                       std::optional<double> min_confidence = std::nullopt);
+std::vector<Bin> enforce_minimum_size(const std::vector<Bin>& bins, double min_obs = 0,
+                                       double min_bads = 0, bool increasing = false,
+                                       std::optional<double> min_confidence = std::nullopt,
+                                       bool use_counts = true);
 
 // Shrink each bin's empirical bad rate toward a prior using Bayesian
 // (credibility) weighting:
@@ -165,10 +186,19 @@ double interpolate_pd(const std::vector<CalibratedBin>& bins, double score);
 // bundles the resulting band table (`bands`) together with a smoothed,
 // continuous PD curve derived from it (`pd_for_score()`, via
 // interpolate_pd()) - use whichever representation suits the consumer.
-CalibrationResult run_pipeline(const std::vector<std::pair<double, int>>& observations, double k,
-                                long min_obs = 0, long min_bads = 0,
+CalibrationResult run_pipeline(const std::vector<std::tuple<double, int, double>>& observations,
+                                double k, double min_obs = 0, double min_bads = 0,
                                 std::optional<double> prior = std::nullopt,
                                 bool increasing = false,
-                                std::optional<double> min_confidence = std::nullopt);
+                                std::optional<double> min_confidence = std::nullopt,
+                                bool use_counts = true);
+
+// Convenience overload for unweighted observations (weight = 1 for all).
+CalibrationResult run_pipeline(const std::vector<std::pair<double, int>>& observations, double k,
+                                double min_obs = 0, double min_bads = 0,
+                                std::optional<double> prior = std::nullopt,
+                                bool increasing = false,
+                                std::optional<double> min_confidence = std::nullopt,
+                                bool use_counts = true);
 
 }  // namespace mapa

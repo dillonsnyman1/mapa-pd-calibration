@@ -19,6 +19,8 @@ from mapa import (
 )
 
 # Raw (score, bad) observations - bad = 1 for a default, 0 otherwise.
+# Each tuple is (score, bad) or (score, bad, weight) — see "Value-weighted
+# observations" below.
 observations = [
     (400, 1),
     (400, 0),
@@ -29,7 +31,7 @@ observations = [
 pooled = calibrate(observations)
 
 for b in pooled:
-    print(b.score_min, b.score_max, b.n_obs, b.n_bads, b.bad_rate)
+    print(b.score_min, b.score_max, b.n_obs, b.n_bads, b.count, b.count_bads, b.bad_rate)
 
 # Further pool any bands that are too small to support a stable estimate.
 sized = enforce_minimum_size(pooled, min_obs=50, min_bads=10)
@@ -67,10 +69,18 @@ print(result.pd_for_score(412))
 bad rate is monotone. If you already have pre-aggregated score bands, call
 `mapa` directly on a list of `Bin(score_min, score_max, n_obs, n_bads)`.
 
+Bins carry two sets of counts: `n_obs`/`n_bads` (floats - weighted sums)
+and `count`/`count_bads` (ints - raw observation counts). For unweighted
+observations they are identical.
+
 `enforce_minimum_size` is an optional step that further pools any bands
 falling short of the given `min_obs`/`min_bads` thresholds, merging each
 into whichever neighbour has the closer bad rate, then re-pooling to
 restore monotonicity. With the default thresholds (0, 0) it's a no-op.
+The `use_counts` parameter (default `True`) controls whether the
+thresholds are checked against the raw observation counts
+(`count`/`count_bads`) or against the weighted sums
+(`n_obs`/`n_bads`).
 
 `apply_bayesian_adjustment` is an optional step that shrinks each band's
 bad rate toward a prior (by default the overall bad rate) using
@@ -96,7 +106,8 @@ monotonicity.
 `run_pipeline` chains all of the above (`calibrate`, `enforce_minimum_size`,
 `apply_bayesian_adjustment`, `repool_calibrated_bins`) and returns a
 `CalibrationResult` bundling both outputs: `bands` (the band table) and
-`pd_for_score` (smoothed PDs via `interpolate_pd`). Use whichever
+`pd_for_score` (smoothed PDs via `interpolate_pd`). The `use_counts`
+parameter is passed through to `enforce_minimum_size`. Use whichever
 representation suits the consumer.
 
 ### Confidence-based pooling
@@ -114,6 +125,32 @@ pooled = mapa(initial_bins, min_confidence=0.95)
 This produces fewer, larger bins whose bad rates are more reliably
 distinguishable from their neighbours. With the default (`None`), only
 monotonicity violations are merged, as before.
+
+### Value-weighted observations
+
+Observations can carry an optional weight (typically exposure at default).
+Pass each observation as a `(score, bad, weight)` tuple instead of
+`(score, bad)`. When no weight is given, it defaults to 1
+(number-weighted), and `n_obs`/`n_bads` equal `count`/`count_bads`.
+
+```python
+# Value-weighted observations: (score, bad, weight)
+# Weight is typically exposure at default (EAD).
+observations = [
+    (400, 1, 50000),
+    (400, 0, 120000),
+    (405, 0, 85000),
+    # ...
+]
+
+result = run_pipeline(observations, k=10, min_obs=50, min_bads=10, use_counts=True)
+```
+
+When `use_counts=True` (the default), the `min_obs`/`min_bads` thresholds
+in `enforce_minimum_size` are checked against the raw observation counts
+(`count`/`count_bads`). Set `use_counts=False` to check against the
+weighted sums (`n_obs`/`n_bads`) instead. The z-test in confidence-based
+pooling always uses the raw counts (`count`/`count_bads`) for sample sizes.
 
 ## Running the tests
 

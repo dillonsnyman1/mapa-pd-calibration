@@ -334,6 +334,141 @@ assert(sum(result.n_obs) == height(obs), 'n_obs total mismatch in increasing mod
 fprintf('PASS\n');
 
 % ---------------------------------------------------------------------------
+% Test 23: weighted bins_from_observations matches expected
+% ---------------------------------------------------------------------------
+fprintf('Test 23: weighted bins_from_observations matches expected ... ');
+w_obs    = load_weighted_observations(fixtures_dir);
+w_result = bins_from_observations(w_obs);
+w_exp    = load_weighted_bins(fixtures_dir, 'expected_initial_bins_weighted.csv');
+assert(weighted_bins_equal(w_result, w_exp), ...
+    'weighted bins_from_observations does not match expected');
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
+% Test 24: weighted bins differ from unweighted
+% ---------------------------------------------------------------------------
+fprintf('Test 24: weighted bins differ from unweighted ... ');
+w_obs       = load_weighted_observations(fixtures_dir);
+w_bins      = bins_from_observations(w_obs);
+uw_obs      = table(w_obs.score, w_obs.bad, 'VariableNames', {'score', 'bad'});
+uw_bins     = bins_from_observations(uw_obs);
+w_rates     = w_bins.n_bads ./ w_bins.n_obs;
+uw_rates    = uw_bins.n_bads ./ uw_bins.n_obs;
+common_len  = min(height(w_bins), height(uw_bins));
+assert(any(abs(w_rates(1:common_len) - uw_rates(1:common_len)) > 1e-12), ...
+    'Weighted and unweighted bad rates should differ');
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
+% Test 25: weighted pooling preserves totals
+% ---------------------------------------------------------------------------
+fprintf('Test 25: weighted pooling preserves totals ... ');
+w_obs     = load_weighted_observations(fixtures_dir);
+w_initial = bins_from_observations(w_obs);
+w_pooled  = mapa_pool(w_initial);
+assert(abs(sum(w_pooled.n_obs)  - sum(w_initial.n_obs))  < 1e-6, ...
+    'weighted n_obs total mismatch after pooling');
+assert(abs(sum(w_pooled.n_bads) - sum(w_initial.n_bads)) < 1e-6, ...
+    'weighted n_bads total mismatch after pooling');
+assert(sum(w_pooled.count)      == sum(w_initial.count), ...
+    'weighted count total mismatch after pooling');
+assert(sum(w_pooled.count_bads) == sum(w_initial.count_bads), ...
+    'weighted count_bads total mismatch after pooling');
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
+% Test 26: weighted pooling is monotone
+% ---------------------------------------------------------------------------
+fprintf('Test 26: weighted pooling is monotone ... ');
+w_obs    = load_weighted_observations(fixtures_dir);
+w_pooled = mapa_pool(bins_from_observations(w_obs));
+w_rates  = w_pooled.n_bads ./ w_pooled.n_obs;
+assert(all(diff(w_rates) <= 0), ...
+    'Weighted pooled bad rates are not non-increasing');
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
+% Test 27: weighted pooling matches expected
+% ---------------------------------------------------------------------------
+fprintf('Test 27: weighted pooling matches expected ... ');
+w_obs    = load_weighted_observations(fixtures_dir);
+w_pooled = mapa_pool(bins_from_observations(w_obs));
+w_exp    = load_weighted_bins(fixtures_dir, 'expected_pooled_bins_weighted.csv');
+assert(weighted_bins_equal(w_pooled, w_exp), ...
+    'weighted pooling does not match expected');
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
+% Test 28: weighted enforce_minimum_size uses counts
+% ---------------------------------------------------------------------------
+fprintf('Test 28: weighted enforce_minimum_size uses counts ... ');
+w_obs    = load_weighted_observations(fixtures_dir);
+w_pooled = mapa_pool(bins_from_observations(w_obs));
+w_sized  = enforce_minimum_size(w_pooled, MIN_OBS, MIN_BADS, false, [], true);
+if height(w_sized) > 1
+    assert(all(w_sized.count      >= MIN_OBS),  'count threshold violated (weighted)');
+    assert(all(w_sized.count_bads >= MIN_BADS), 'count_bads threshold violated (weighted)');
+end
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
+% Test 29: weighted enforce_minimum_size matches expected
+% ---------------------------------------------------------------------------
+fprintf('Test 29: weighted enforce_minimum_size matches expected ... ');
+w_obs    = load_weighted_observations(fixtures_dir);
+w_pooled = mapa_pool(bins_from_observations(w_obs));
+w_sized  = enforce_minimum_size(w_pooled, MIN_OBS, MIN_BADS, false, [], true);
+w_exp    = load_weighted_bins(fixtures_dir, 'expected_min_size_bins_weighted.csv');
+assert(weighted_bins_equal(w_sized, w_exp), ...
+    'weighted enforce_minimum_size does not match expected');
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
+% Test 30: weighted run_pipeline matches expected
+% ---------------------------------------------------------------------------
+fprintf('Test 30: weighted run_pipeline matches expected ... ');
+w_obs      = load_weighted_observations(fixtures_dir);
+w_pipeline = run_pipeline(w_obs, BAYESIAN_K, MIN_OBS, MIN_BADS, [], false, [], true);
+w_exp      = load_weighted_bins(fixtures_dir, 'expected_repooled_calibrated_bins_weighted.csv');
+assert(height(w_pipeline.bands) == height(w_exp), ...
+    'Row count mismatch in weighted pipeline bands');
+assert(all(w_pipeline.bands.score_min == w_exp.score_min), ...
+    'score_min mismatch in weighted pipeline');
+assert(all(w_pipeline.bands.score_max == w_exp.score_max), ...
+    'score_max mismatch in weighted pipeline');
+assert(all(abs(w_pipeline.bands.n_obs  - w_exp.n_obs)  < 1e-9), ...
+    'n_obs mismatch in weighted pipeline');
+assert(all(abs(w_pipeline.bands.n_bads - w_exp.n_bads) < 1e-9), ...
+    'n_bads mismatch in weighted pipeline');
+assert(all(w_pipeline.bands.count      == w_exp.count), ...
+    'count mismatch in weighted pipeline');
+assert(all(w_pipeline.bands.count_bads == w_exp.count_bads), ...
+    'count_bads mismatch in weighted pipeline');
+for ii = 1:height(w_exp)
+    assert(abs(w_pipeline.bands.pd(ii) - w_exp.pd(ii)) < 1e-9, ...
+        sprintf('pd mismatch at row %d in weighted pipeline', ii));
+end
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
+% Test 31: weighted smoothed PDs match expected
+% ---------------------------------------------------------------------------
+fprintf('Test 31: weighted smoothed PDs match expected ... ');
+w_obs      = load_weighted_observations(fixtures_dir);
+w_pipeline = run_pipeline(w_obs, BAYESIAN_K, MIN_OBS, MIN_BADS, [], false, [], true);
+w_smooth   = readtable(fullfile(fixtures_dir, 'expected_smoothed_pds_weighted.csv'));
+for ii = 1:height(w_smooth)
+    score  = double(w_smooth.score(ii));
+    exp_pd = double(w_smooth.pd(ii));
+    res_pd = w_pipeline.pd_for_score(score);
+    rel_err = abs(res_pd - exp_pd) / max(abs(exp_pd), 1e-15);
+    assert(abs(res_pd - exp_pd) < 1e-9 || rel_err < 1e-9, ...
+        sprintf('weighted smoothed pd mismatch at score %g: got %.15g, expected %.15g', ...
+                score, res_pd, exp_pd));
+end
+fprintf('PASS\n');
+
+% ---------------------------------------------------------------------------
 fprintf('\nAll tests passed.\n');
 
 % ===========================================================================
@@ -375,4 +510,36 @@ function ok = calibrated_bins_equal(a, b, tol)
     if ~bins_equal(a, b); ok = false; return; end
     rel_err = abs(a.pd - b.pd) ./ max(abs(b.pd), 1e-15);
     ok = all(abs(a.pd - b.pd) < tol | rel_err < tol);
+end
+
+function obs = load_weighted_observations(fixtures_dir)
+% Load weighted raw observations from CSV.
+    t = readtable(fullfile(fixtures_dir, 'raw_observations_weighted.csv'));
+    obs = table(double(t.score), double(t.bad), double(t.weight), ...
+                'VariableNames', {'score', 'bad', 'weight'});
+end
+
+function bins = load_weighted_bins(fixtures_dir, filename)
+% Load a weighted bin table from a CSV fixture file.
+    t = readtable(fullfile(fixtures_dir, filename));
+    bins = table( ...
+        double(t.score_min), double(t.score_max), ...
+        double(t.n_obs), double(t.n_bads), ...
+        double(t.count), double(t.count_bads), ...
+        'VariableNames', {'score_min', 'score_max', 'n_obs', 'n_bads', 'count', 'count_bads'});
+    if any(strcmp(t.Properties.VariableNames, 'pd'))
+        bins.pd = double(t.pd);
+    end
+end
+
+function ok = weighted_bins_equal(a, b, tol)
+% TRUE if two weighted bin tables agree within tolerance.
+    if nargin < 3; tol = 1e-6; end
+    if height(a) ~= height(b); ok = false; return; end
+    ok = all(a.score_min == b.score_min) && ...
+         all(a.score_max == b.score_max) && ...
+         all(abs(a.n_obs - b.n_obs) < tol) && ...
+         all(abs(a.n_bads - b.n_bads) < tol) && ...
+         all(a.count == b.count) && ...
+         all(a.count_bads == b.count_bads);
 end

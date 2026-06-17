@@ -28,11 +28,30 @@ def _load_observations() -> list[tuple[float, int]]:
         return [(float(row["score"]), int(row["bad"])) for row in reader]
 
 
+def _load_weighted_observations() -> list[tuple[float, int, float]]:
+    with open(FIXTURES_DIR / "raw_observations_weighted.csv", newline="") as f:
+        reader = csv.DictReader(f)
+        return [(float(row["score"]), int(row["bad"]), float(row["weight"])) for row in reader]
+
+
 def _load_bins(filename: str) -> list[Bin]:
     with open(FIXTURES_DIR / filename, newline="") as f:
         reader = csv.DictReader(f)
         return [
             Bin(float(row["score_min"]), float(row["score_max"]), int(row["n_obs"]), int(row["n_bads"]))
+            for row in reader
+        ]
+
+
+def _load_weighted_bins(filename: str) -> list[Bin]:
+    with open(FIXTURES_DIR / filename, newline="") as f:
+        reader = csv.DictReader(f)
+        return [
+            Bin(
+                float(row["score_min"]), float(row["score_max"]),
+                float(row["n_obs"]), float(row["n_bads"]),
+                int(row["count"]), int(row["count_bads"]),
+            )
             for row in reader
         ]
 
@@ -296,3 +315,127 @@ def test_increasing_direction():
     rates = [b.bad_rate for b in result]
     assert rates == sorted(rates)
     assert sum(b.n_obs for b in result) == len(observations)
+
+
+# ---------------------------------------------------------------------------
+# Value-weighted tests
+# ---------------------------------------------------------------------------
+
+
+def test_weighted_bins_from_observations_matches_expected():
+    result = bins_from_observations(_load_weighted_observations())
+    expected = _load_weighted_bins("expected_initial_bins_weighted.csv")
+
+    assert len(result) == len(expected)
+    for r, e in zip(result, expected):
+        assert r.score_min == e.score_min
+        assert r.score_max == e.score_max
+        assert math.isclose(r.n_obs, e.n_obs, rel_tol=1e-9)
+        assert math.isclose(r.n_bads, e.n_bads, rel_tol=1e-9)
+        assert r.count == e.count
+        assert r.count_bads == e.count_bads
+
+
+def test_weighted_bins_differ_from_unweighted():
+    weighted = _load_weighted_observations()
+    unweighted = [(s, b) for s, b, _ in weighted]
+
+    w_bins = bins_from_observations(weighted)
+    u_bins = bins_from_observations(unweighted)
+
+    assert len(w_bins) == len(u_bins)
+    diffs = sum(1 for w, u in zip(w_bins, u_bins) if not math.isclose(w.bad_rate, u.bad_rate, rel_tol=1e-9))
+    assert diffs > 0
+
+
+def test_weighted_pooling_preserves_totals():
+    observations = _load_weighted_observations()
+    initial = bins_from_observations(observations)
+    result = mapa(initial)
+
+    assert math.isclose(sum(b.n_obs for b in result), sum(b.n_obs for b in initial), rel_tol=1e-9)
+    assert math.isclose(sum(b.n_bads for b in result), sum(b.n_bads for b in initial), rel_tol=1e-9)
+    assert sum(b.count for b in result) == sum(b.count for b in initial)
+    assert sum(b.count_bads for b in result) == sum(b.count_bads for b in initial)
+
+
+def test_weighted_pooling_is_monotone():
+    initial = bins_from_observations(_load_weighted_observations())
+    result = mapa(initial)
+
+    rates = [b.bad_rate for b in result]
+    assert rates == sorted(rates, reverse=True)
+
+
+def test_weighted_pooling_matches_expected():
+    initial = bins_from_observations(_load_weighted_observations())
+    result = mapa(initial)
+    expected = _load_weighted_bins("expected_pooled_bins_weighted.csv")
+
+    assert len(result) == len(expected)
+    for r, e in zip(result, expected):
+        assert r.score_min == e.score_min
+        assert r.score_max == e.score_max
+        assert math.isclose(r.n_obs, e.n_obs, rel_tol=1e-9)
+        assert math.isclose(r.n_bads, e.n_bads, rel_tol=1e-9)
+        assert r.count == e.count
+        assert r.count_bads == e.count_bads
+
+
+def test_weighted_enforce_minimum_size_uses_counts():
+    initial = bins_from_observations(_load_weighted_observations())
+    pooled = mapa(initial)
+
+    result = enforce_minimum_size(pooled, min_obs=MIN_OBS, min_bads=MIN_BADS, use_counts=True)
+
+    if len(result) > 1:
+        for b in result:
+            assert b.count >= MIN_OBS
+            assert b.count_bads >= MIN_BADS
+
+
+def test_weighted_enforce_minimum_size_matches_expected():
+    initial = bins_from_observations(_load_weighted_observations())
+    pooled = mapa(initial)
+    result = enforce_minimum_size(pooled, min_obs=MIN_OBS, min_bads=MIN_BADS, use_counts=True)
+    expected = _load_weighted_bins("expected_min_size_bins_weighted.csv")
+
+    assert len(result) == len(expected)
+    for r, e in zip(result, expected):
+        assert r.score_min == e.score_min
+        assert r.score_max == e.score_max
+        assert math.isclose(r.n_obs, e.n_obs, rel_tol=1e-9)
+        assert math.isclose(r.n_bads, e.n_bads, rel_tol=1e-9)
+        assert r.count == e.count
+        assert r.count_bads == e.count_bads
+
+
+def test_weighted_run_pipeline_matches_expected():
+    observations = _load_weighted_observations()
+    result = run_pipeline(observations, k=BAYESIAN_K, min_obs=MIN_OBS, min_bads=MIN_BADS, use_counts=True)
+
+    with open(FIXTURES_DIR / "expected_repooled_calibrated_bins_weighted.csv", newline="") as f:
+        expected = list(csv.DictReader(f))
+
+    assert len(result.bands) == len(expected)
+    for band, row in zip(result.bands, expected):
+        assert band.score_min == float(row["score_min"])
+        assert band.score_max == float(row["score_max"])
+        assert math.isclose(band.n_obs, float(row["n_obs"]), rel_tol=1e-9)
+        assert math.isclose(band.n_bads, float(row["n_bads"]), rel_tol=1e-9)
+        assert band.count == int(row["count"])
+        assert band.count_bads == int(row["count_bads"])
+        assert math.isclose(band.pd, float(row["pd"]), rel_tol=1e-9)
+
+
+def test_weighted_smoothed_pds_match_expected():
+    result = run_pipeline(
+        _load_weighted_observations(), k=BAYESIAN_K, min_obs=MIN_OBS, min_bads=MIN_BADS, use_counts=True
+    )
+
+    with open(FIXTURES_DIR / "expected_smoothed_pds_weighted.csv", newline="") as f:
+        expected = list(csv.DictReader(f))
+
+    for row in expected:
+        score = float(row["score"])
+        assert math.isclose(result.pd_for_score(score), float(row["pd"]), rel_tol=1e-9)

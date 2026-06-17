@@ -24,8 +24,12 @@
                                     call, producing both a band table and
                                     (optionally) smoothed per-score PDs
 
- All datasets use the columns: score_min, score_max, n_obs, n_bads (and,
- for %mapa_bayesian_adjustment's and %mapa_repool_calibrated's output, pd).
+ All datasets use the columns: score_min, score_max, n_obs, n_bads, count,
+ count_bads (and, for %mapa_bayesian_adjustment's and
+ %mapa_repool_calibrated's output, pd). For unweighted data n_obs = count
+ and n_bads = count_bads; for value-weighted data n_obs = sum(weight) and
+ n_bads = sum(bad * weight) while count and count_bads track raw
+ observation numbers.
 
  Implementation style: rather than simulating a stack with _temporary_
  arrays, %mapa_pool and %mapa_enforce_minimum_size are implemented as
@@ -45,13 +49,32 @@
 %macro mapa_bins_from_observations(in=, out=);
     /* Group raw (score, bad) observations into one bin per unique score,
        ordered by score ascending. `in` must have columns: score, bad
-       (bad = 1 for a default, 0 otherwise). */
+       (bad = 1 for a default, 0 otherwise). If `in` also has a column
+       named weight, n_obs = sum(weight) and n_bads = sum(bad * weight);
+       otherwise weight defaults to 1 (so n_obs = count(*) and
+       n_bads = sum(bad)). count and count_bads always track the raw
+       number of observations regardless of weighting. */
+    %local has_weight;
+    proc sql noprint;
+        select count(*) into :has_weight
+        from dictionary.columns
+        where libname='WORK' and upcase(memname)=upcase("&in") and upcase(name)='WEIGHT';
+    quit;
+
     proc sql;
         create table &out as
         select score as score_min,
                score as score_max,
-               count(*) as n_obs,
-               sum(bad) as n_bads
+               %if &has_weight > 0 %then %do;
+                   sum(weight) as n_obs,
+                   sum(bad * weight) as n_bads,
+               %end;
+               %else %do;
+                   count(*) as n_obs,
+                   sum(bad) as n_bads,
+               %end;
+               count(*) as count,
+               sum(bad) as count_bads
         from &in
         group by score_min
         order by score_min;
@@ -99,20 +122,22 @@
 
         data _mapa_pool_grp;
             set &src;
-            retain _grp 1 _run_nobs _run_nbads;
+            retain _grp 1 _run_nobs _run_nbads _run_count _run_count_bads;
             if _n_ = 1 then do;
                 _run_nobs  = n_obs;
                 _run_nbads = n_bads;
+                _run_count = count;
+                _run_count_bads = count_bads;
             end;
             else do;
                 _violates = (&increasing = 0 and (n_bads / n_obs) > (_run_nbads / _run_nobs))
                             or (&increasing = 1 and (n_bads / n_obs) < (_run_nbads / _run_nobs));
 
                 if &min_confidence > 0 then do;
-                    _p_pool = (_run_nbads + n_bads) / (_run_nobs + n_obs);
+                    _p_pool = (_run_count_bads + count_bads) / (_run_count + count);
                     if _p_pool <= 0 or _p_pool >= 1 then _not_sig = 1;
                     else do;
-                        _se = sqrt(_p_pool * (1 - _p_pool) * (1 / _run_nobs + 1 / n_obs));
+                        _se = sqrt(_p_pool * (1 - _p_pool) * (1 / _run_count + 1 / count));
                         _z = abs((n_bads / n_obs) - (_run_nbads / _run_nobs));
                         _not_sig = (_z / _se < &z_crit);
                     end;
@@ -122,11 +147,15 @@
                 if _violates or _not_sig then do;
                     _run_nobs  + n_obs;
                     _run_nbads + n_bads;
+                    _run_count + count;
+                    _run_count_bads + count_bads;
                 end;
                 else do;
                     _grp + 1;
                     _run_nobs  = n_obs;
                     _run_nbads = n_bads;
+                    _run_count = count;
+                    _run_count_bads = count_bads;
                 end;
             end;
         run;
@@ -140,7 +169,9 @@
             select min(score_min) as score_min,
                    max(score_max) as score_max,
                    sum(n_obs) as n_obs,
-                   sum(n_bads) as n_bads
+                   sum(n_bads) as n_bads,
+                   sum(count) as count,
+                   sum(count_bads) as count_bads
             from _mapa_pool_grp
             group by _grp
             order by score_min;
@@ -156,7 +187,7 @@
 
     data &out;
         set &src;
-        keep score_min score_max n_obs n_bads;
+        keep score_min score_max n_obs n_bads count count_bads;
     run;
 
     proc datasets lib=work nolist;
@@ -177,21 +208,23 @@
 %mend mapa_calibrate;
 
 
-%macro mapa_enforce_minimum_size(in=, out=, min_obs=0, min_bads=0, increasing=0, min_confidence=0);
+%macro mapa_enforce_minimum_size(in=, out=, min_obs=0, min_bads=0, increasing=0, min_confidence=0, use_counts=1);
     /* Further pool bins that don't meet minimum size thresholds, even if
        they don't violate monotonicity.
 
        `in` must be sorted by score_min ascending and already pooled (e.g.
        the output of %mapa_pool), with columns: score_min, score_max,
-       n_obs, n_bads.
+       n_obs, n_bads, count, count_bads.
 
-       A bin "violates" if n_obs < min_obs or n_bads < min_bads. Each pass
-       finds the first violating bin, decides which adjacent bin has the
-       closer bad rate, and merges the two. This repeats until no bin
-       violates the thresholds or only one bin remains. Because merging
-       toward the closer-rate neighbour can re-introduce a monotonicity
-       violation, the result is passed back through %mapa_pool.
-       min_confidence is forwarded to that final pass; see %mapa_pool. */
+       When use_counts=1 (the default), a bin "violates" if count < min_obs
+       or count_bads < min_bads (raw observation counts). When use_counts=0,
+       n_obs and n_bads (weighted sums) are checked instead. Each pass finds
+       the first violating bin, decides which adjacent bin has the closer bad
+       rate, and merges the two. This repeats until no bin violates the
+       thresholds or only one bin remains. Because merging toward the
+       closer-rate neighbour can re-introduce a monotonicity violation, the
+       result is passed back through %mapa_pool. min_confidence is forwarded
+       to that final pass; see %mapa_pool. */
     %local iter src n violator neighbour lo hi done;
     %let iter = 0;
     %let src = &in;
@@ -227,7 +260,12 @@
             proc sql noprint;
                 select min(_seq) into :violator
                 from _mapa_sized_ann
-                where n_obs < &min_obs or n_bads < &min_bads;
+                %if &use_counts = 1 %then %do;
+                    where count < &min_obs or count_bads < &min_bads;
+                %end;
+                %else %do;
+                    where n_obs < &min_obs or n_bads < &min_bads;
+                %end;
             quit;
 
             %if %length(&violator) = 0 %then %do;
@@ -257,24 +295,26 @@
 
                 /* Merge bins &lo and &hi into a single bin. */
                 data _mapa_sized_merged;
-                    set _mapa_sized_seq(where=(_seq = &lo) keep=score_min n_obs n_bads);
-                    set _mapa_sized_seq(where=(_seq = &hi) keep=score_max n_obs n_bads
-                                         rename=(n_obs = n_obs_hi n_bads = n_bads_hi));
+                    set _mapa_sized_seq(where=(_seq = &lo) keep=score_min n_obs n_bads count count_bads);
+                    set _mapa_sized_seq(where=(_seq = &hi) keep=score_max n_obs n_bads count count_bads
+                                         rename=(n_obs=n_obs_hi n_bads=n_bads_hi count=count_hi count_bads=count_bads_hi));
                     n_obs  = n_obs + n_obs_hi;
                     n_bads = n_bads + n_bads_hi;
-                    drop n_obs_hi n_bads_hi;
+                    count  = count + count_hi;
+                    count_bads = count_bads + count_bads_hi;
+                    drop n_obs_hi n_bads_hi count_hi count_bads_hi;
                 run;
 
                 proc sql;
                     create table _mapa_sized_&iter as
-                    select score_min, score_max, n_obs, n_bads
+                    select score_min, score_max, n_obs, n_bads, count, count_bads
                     from _mapa_sized_seq
                     where _seq < &lo
                     union all
-                    select score_min, score_max, n_obs, n_bads
+                    select score_min, score_max, n_obs, n_bads, count, count_bads
                     from _mapa_sized_merged
                     union all
-                    select score_min, score_max, n_obs, n_bads
+                    select score_min, score_max, n_obs, n_bads, count, count_bads
                     from _mapa_sized_seq
                     where _seq > &hi
                     order by score_min;
@@ -352,21 +392,27 @@
 
         data _mapa_repool_grp;
             set &src;
-            retain _grp 1 _run_nobs _run_pd;
+            retain _grp 1 _run_nobs _run_pd _run_count _run_count_bads;
             if _n_ = 1 then do;
                 _run_nobs = n_obs;
                 _run_pd   = pd;
+                _run_count = count;
+                _run_count_bads = count_bads;
             end;
             else do;
                 if (&increasing = 0 and pd > _run_pd)
                    or (&increasing = 1 and pd < _run_pd) then do;
                     _run_pd = (_run_pd * _run_nobs + pd * n_obs) / (_run_nobs + n_obs);
                     _run_nobs + n_obs;
+                    _run_count + count;
+                    _run_count_bads + count_bads;
                 end;
                 else do;
                     _grp + 1;
                     _run_nobs = n_obs;
                     _run_pd   = pd;
+                    _run_count = count;
+                    _run_count_bads = count_bads;
                 end;
             end;
         run;
@@ -381,7 +427,9 @@
                    max(score_max) as score_max,
                    sum(n_obs) as n_obs,
                    sum(n_bads) as n_bads,
-                   sum(pd * n_obs) / sum(n_obs) as pd
+                   sum(pd * n_obs) / sum(n_obs) as pd,
+                   sum(count) as count,
+                   sum(count_bads) as count_bads
             from _mapa_repool_grp
             group by _grp
             order by score_min;
@@ -397,7 +445,7 @@
 
     data &out;
         set &src;
-        keep score_min score_max n_obs n_bads pd;
+        keep score_min score_max n_obs n_bads pd count count_bads;
     run;
 
     proc datasets lib=work nolist;
@@ -476,7 +524,7 @@
 
 
 %macro mapa_run_pipeline(in=, out_bands=, k=, min_obs=0, min_bads=0, prior=, increasing=0,
-                          min_confidence=0, scores=, out_smoothed=);
+                          min_confidence=0, scores=, out_smoothed=, use_counts=1);
     /* Run the full MAPA pipeline in one call: bin, pool, enforce minimum
        size, apply Bayesian adjustment, and re-pool.
 
@@ -497,7 +545,7 @@
     %mapa_calibrate(in=&in, out=_mapa_pipeline_pooled, increasing=&increasing, min_confidence=&min_confidence)
     %mapa_enforce_minimum_size(in=_mapa_pipeline_pooled, out=_mapa_pipeline_sized,
                                 min_obs=&min_obs, min_bads=&min_bads, increasing=&increasing,
-                                min_confidence=&min_confidence)
+                                min_confidence=&min_confidence, use_counts=&use_counts)
     %mapa_bayesian_adjustment(in=_mapa_pipeline_sized, out=_mapa_pipeline_calibrated, k=&k, prior=&prior)
     %mapa_repool_calibrated(in=_mapa_pipeline_calibrated, out=&out_bands, increasing=&increasing)
 

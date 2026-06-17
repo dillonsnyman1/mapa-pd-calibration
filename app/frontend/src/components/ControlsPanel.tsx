@@ -1,4 +1,4 @@
-import type { CalibrationParams, Observation } from "../types";
+import type { CalibrationParams, Observation, WeightingMode } from "../types";
 
 interface Props {
   params: CalibrationParams;
@@ -7,6 +7,8 @@ interface Props {
   onError: (message: string | null) => void;
   datasetLabel: string;
   error: string | null;
+  weightingMode: WeightingMode;
+  onWeightingModeChange: (mode: WeightingMode) => void;
 }
 
 function parseCsv(text: string): Observation[] {
@@ -19,14 +21,23 @@ function parseCsv(text: string): Observation[] {
     if (i === 0 && Number.isNaN(Number(parts[0]))) continue; // header row
 
     if (parts.length < 2) {
-      throw new Error(`Line ${i + 1}: expected "score,bad", got "${line}"`);
+      throw new Error(`Line ${i + 1}: expected at least "score,bad", got "${line}"`);
     }
     const score = Number(parts[0]);
     const bad = Number(parts[1]);
     if (Number.isNaN(score) || (bad !== 0 && bad !== 1)) {
       throw new Error(`Line ${i + 1}: invalid row "${line}" (expected numeric score and bad of 0 or 1)`);
     }
-    observations.push([score, bad]);
+
+    let weight = 1;
+    if (parts.length >= 3) {
+      weight = Number(parts[2]);
+      if (Number.isNaN(weight) || weight < 0) {
+        throw new Error(`Line ${i + 1}: invalid weight "${parts[2]}" (expected non-negative number)`);
+      }
+    }
+
+    observations.push([score, bad, weight]);
   }
 
   if (observations.length === 0) {
@@ -35,7 +46,10 @@ function parseCsv(text: string): Observation[] {
   return observations;
 }
 
-export function ControlsPanel({ params, onParamsChange, onObservationsChange, onError, datasetLabel, error }: Props) {
+export function ControlsPanel({
+  params, onParamsChange, onObservationsChange, onError, datasetLabel, error,
+  weightingMode, onWeightingModeChange,
+}: Props) {
   const update = <K extends keyof CalibrationParams>(key: K, value: CalibrationParams[K]) => {
     onParamsChange({ ...params, [key]: value });
   };
@@ -81,8 +95,37 @@ export function ControlsPanel({ params, onParamsChange, onObservationsChange, on
           </div>
           {error && <p className="error">{error}</p>}
           <p className="muted-note" style={{ marginTop: "0.5rem" }}>
-            Upload a CSV with <code>score,bad</code> columns.
+            Upload a CSV with <code>score,bad</code>
+            {weightingMode === "value" ? <code>,weight</code> : null} columns.
           </p>
+        </div>
+      </div>
+
+      <div className="control-group">
+        <div className="controls-grid">
+          <div className="control-field">
+            <label>Weighting</label>
+            <div style={{ display: "flex", gap: "1rem", marginTop: "0.25rem" }}>
+              <label className="checkbox-label">
+                <input
+                  type="radio"
+                  name="weighting"
+                  checked={weightingMode === "number"}
+                  onChange={() => onWeightingModeChange("number")}
+                />
+                Number weighted
+              </label>
+              <label className="checkbox-label">
+                <input
+                  type="radio"
+                  name="weighting"
+                  checked={weightingMode === "value"}
+                  onChange={() => onWeightingModeChange("value")}
+                />
+                Value weighted
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -164,6 +207,17 @@ export function ControlsPanel({ params, onParamsChange, onObservationsChange, on
             />
             Confidence-based pooling
           </label>
+
+          {weightingMode === "value" && (
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={!params.use_counts_for_thresholds}
+                onChange={(e) => update("use_counts_for_thresholds", !e.target.checked)}
+              />
+              Apply minimum thresholds to weighted sums
+            </label>
+          )}
         </div>
       </div>
     </fieldset>

@@ -21,8 +21,11 @@ band's bad rate then becomes the calibrated PD for every score within it.
 
 ## Algorithm
 
-**Input**: raw observations, each a `(score, bad)` pair, where `bad` is 1
-for a default and 0 otherwise.
+**Input**: raw observations, each a `(score, bad)` pair (or
+`(score, bad, weight)` - see "Number vs. value weighting" below), where
+`bad` is 1 for a default and 0 otherwise, and `weight` (default 1) is an
+optional observation weight (e.g. exposure at default for value-weighted
+calibration).
 
 **Output**: a set of pooled score bands, in score order, partitioning the
 full observed score range, whose bad rates are monotone (by default,
@@ -32,20 +35,26 @@ non-increasing as score increases).
 
 1. **Bin**: group the raw observations into one band per unique score,
    ordered by score ascending. This is the finest possible starting point
-   - every distinct score value is initially its own band.
+   - every distinct score value is initially its own band. Each bin tracks
+   both weighted sums (`n_obs` = sum of weights, `n_bads` = sum of
+   weights for defaulted observations) and raw counts (`count` = number
+   of observations, `count_bads` = number of defaulted observations).
+   For number-weighted data (all weights = 1), these are identical.
 2. **Pool**: process bands left to right (lowest score first), maintaining
    a stack of pooled bands built so far.
    - Push the next band onto the stack.
    - While the top two bands on the stack violate the required
      monotonicity (i.e. the higher-scoring band has a *worse* bad rate than
      the lower-scoring band it's compared against), merge them into a
-     single band by summing their observation and bad counts, and push the
-     merged band back onto the stack.
+     single band by summing their weighted sums and raw counts, and push
+     the merged band back onto the stack.
    - Repeat until all bands have been processed.
 
-Because merging recomputes the bad rate of the combined band, a single
-merge can resolve (or trigger) multiple violations, so the pooling step
-repeats until the top of the stack is consistent with the band below it.
+Because merging recomputes the bad rate (`n_bads / n_obs`) of the combined
+band, a single merge can resolve (or trigger) multiple violations, so the
+pooling step repeats until the top of the stack is consistent with the band
+below it. When value-weighted, this bad rate is an exposure-weighted default
+rate.
 
 If you already have pre-aggregated score bands (e.g. from an existing
 binning scheme) rather than raw observations, you can skip the binning step
@@ -82,13 +91,22 @@ after `mapa`: any band with fewer than `min_obs` observations or fewer than
 rate* - minimizing the distortion this introduces - and the process
 repeats until every band meets both thresholds (or only one band remains).
 
+The `use_counts` parameter (default `true`) controls what the thresholds
+are checked against. When `true`, thresholds compare against raw
+observation counts (`count`, `count_bads`) - this is the natural choice
+for statistical reliability, since each raw observation is an independent
+trial. When `false`, thresholds compare against weighted sums (`n_obs`,
+`n_bads`) - useful when thresholds represent economic significance (e.g.
+minimum exposure volume). For number-weighted data the two are identical.
+
 Because merging toward the closer-rate neighbour can introduce a new
 monotonicity violation (the merged band's rate moves toward, and can cross,
 its other neighbour), the result is passed back through `mapa` to restore
 monotonicity before being returned.
 
 With the default thresholds (`min_obs = 0, min_bads = 0`), this step is a
-no-op - every band trivially satisfies `n_obs >= 0` and `n_bads >= 0`.
+no-op - every band trivially satisfies the thresholds regardless of
+whether counts or weighted sums are used.
 
 ## Confidence-based pooling
 
@@ -103,19 +121,24 @@ for 95%). When given, pooling also merges adjacent bands whose bad rates are
 not statistically significantly different at that confidence level, even if
 they don't violate monotonicity.
 
-The test used is the standard two-proportion z-test: for two adjacent bands
-with bad rates `p_a = n_bads_a / n_obs_a` and `p_b = n_bads_b / n_obs_b`, the
-pooled rate `p = (n_bads_a + n_bads_b) / (n_obs_a + n_obs_b)` gives a standard
+The test used is the standard two-proportion z-test. The bad rates being
+compared are `p_a = n_bads_a / n_obs_a` and `p_b = n_bads_b / n_obs_b`
+(which may be value-weighted), but the sample sizes in the test use raw
+observation counts (`count_a`, `count_b`), not weighted sums. This is
+because the z-test assumes independent Bernoulli trials - weighted sums
+don't represent independent trials and would make the test statistically
+meaningless. The pooled rate for the test is
+`p = (n_bads_a + n_bads_b) / (n_obs_a + n_obs_b)`, giving a standard
 error
 
 ```
-se = sqrt(p * (1 - p) * (1 / n_obs_a + 1 / n_obs_b))
+se = sqrt(p * (1 - p) * (1 / count_a + 1 / count_b))
 ```
 
 and a z-statistic `z = |p_a - p_b| / se`. If `z` is below the critical value
 for the requested confidence level (e.g. `1.96` for 95%), the difference is
 not significant and the bands are merged - using the same merge rule as
-ordinary pooling (summing observation and bad counts).
+ordinary pooling (summing weighted sums and raw counts).
 
 This is applied during the same left-to-right pooling pass as the
 monotonicity check, so the result remains monotone: merging two adjacent
@@ -149,7 +172,10 @@ pd = (n_bads + k * prior) / (n_obs + k)
 observations" of the prior. A band with `n_obs == k` is shrunk halfway
 between its own bad rate and the prior; bands much larger than `k` are
 barely adjusted, and bands much smaller than `k` end up close to the
-prior.
+prior. When value-weighted, `n_obs` and `n_bads` in the formula are
+weighted sums, so the shrinkage strength is determined by total weighted
+volume rather than raw count. The `k` parameter is still denominated in
+the same units as `n_obs` (i.e. total weight, not number of observations).
 
 ### Note on monotonicity after shrinkage
 
@@ -196,8 +222,8 @@ bands' `pd` values:
 pd = (pd_a * n_obs_a + pd_b * n_obs_b) / (n_obs_a + n_obs_b)
 ```
 
-Observation and bad counts are still summed as before, so totals continue
-to be preserved.
+Weighted sums and raw counts are still summed as before, so totals
+continue to be preserved.
 
 Running `repool_calibrated_bins` on the bundled fixture's calibrated bins
 merges the two crossing bands from the example above into one, restoring a
@@ -233,6 +259,39 @@ This step is purely cosmetic: it doesn't change which pool a score
 "belongs to" for reporting purposes, only the PD assigned to individual
 scores within a pool. It is typically applied last, after
 `repool_calibrated_bins`.
+
+## Number vs. value weighting
+
+By default, every observation carries equal weight (`weight = 1`), and the
+pipeline produces a standard number-weighted PD calibration: bad rates are
+simple proportions, and all size thresholds refer to observation counts.
+This is the traditional approach for scorecard calibration.
+
+For some applications - notably IFRS 9 expected credit loss (ECL)
+calculations - PD must be calibrated on an exposure-weighted basis, where
+each observation's contribution is proportional to its exposure at default
+(EAD). Setting `weight` to the observation's EAD produces a
+**value-weighted** calibration: bad rates become exposure-weighted default
+rates, and weighted sums (`n_obs`, `n_bads`) reflect total exposure volume
+rather than counts.
+
+How weighting flows through the pipeline:
+
+- **Binning and pooling** use `n_bads / n_obs` as the bad rate, which is
+  exposure-weighted when weights are used. Monotonicity is enforced on
+  this weighted bad rate.
+- **Confidence-based pooling** uses raw counts (`count`, `count_bads`) for
+  sample sizes in the z-test, since the statistical test requires
+  independent trials. The bad rates being compared are still
+  `n_bads / n_obs`.
+- **Minimum bin size** (`enforce_minimum_size`) defaults to checking raw
+  counts (`use_counts = true`), but accepts `use_counts = false` to check
+  weighted sums instead. `run_pipeline` passes `use_counts` through.
+- **Bayesian adjustment** uses `n_obs` and `n_bads` (weighted sums) in the
+  credibility formula. The `k` parameter should be set relative to typical
+  `n_obs` values (total weight per band, not observation count).
+- **Re-pooling** and **smoothing** operate on the adjusted `pd` values and
+  are unaffected by the weighting mode.
 
 ## Attribution
 

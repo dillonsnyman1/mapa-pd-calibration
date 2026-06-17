@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -95,6 +96,47 @@ std::vector<ExpectedScorePd> load_score_pds(const std::string& path) {
 bool bins_equal(const mapa::Bin& a, const mapa::Bin& b) {
     return a.score_min == b.score_min && a.score_max == b.score_max && a.n_obs == b.n_obs &&
            a.n_bads == b.n_bads;
+}
+
+std::vector<std::tuple<double, int, double>> load_weighted_observations(const std::string& path) {
+    std::vector<std::tuple<double, int, double>> observations;
+    for (const auto& row : read_csv(path)) {
+        observations.emplace_back(std::stod(row[0]), std::stoi(row[1]), std::stod(row[2]));
+    }
+    return observations;
+}
+
+struct ExpectedWeightedBin {
+    double score_min, score_max, n_obs, n_bads;
+    long count, count_bads;
+};
+
+std::vector<ExpectedWeightedBin> load_weighted_bins(const std::string& path) {
+    std::vector<ExpectedWeightedBin> bins;
+    for (const auto& row : read_csv(path)) {
+        bins.push_back(ExpectedWeightedBin{
+            std::stod(row[0]), std::stod(row[1]), std::stod(row[2]), std::stod(row[3]),
+            std::stol(row[4]), std::stol(row[5])
+        });
+    }
+    return bins;
+}
+
+struct ExpectedWeightedCalibratedBin {
+    double score_min, score_max, n_obs, n_bads;
+    long count, count_bads;
+    double pd;
+};
+
+std::vector<ExpectedWeightedCalibratedBin> load_weighted_calibrated_bins(const std::string& path) {
+    std::vector<ExpectedWeightedCalibratedBin> bins;
+    for (const auto& row : read_csv(path)) {
+        bins.push_back(ExpectedWeightedCalibratedBin{
+            std::stod(row[0]), std::stod(row[1]), std::stod(row[2]), std::stod(row[3]),
+            std::stol(row[4]), std::stol(row[5]), std::stod(row[6])
+        });
+    }
+    return bins;
 }
 
 }  // namespace
@@ -323,6 +365,176 @@ int main() {
         assert(confident.size() <= result.size());
     }
 
-    std::cout << "All " << result.size() << " pooled bins match expected output.\n";
+    // ---------------------------------------------------------------
+    // Weighted test cases
+    // ---------------------------------------------------------------
+
+    const auto weighted_obs = load_weighted_observations(fixtures_dir + "/raw_observations_weighted.csv");
+    const auto expected_initial_weighted = load_weighted_bins(fixtures_dir + "/expected_initial_bins_weighted.csv");
+
+    // Weighted bins_from_observations matches expected per-score bins.
+    {
+        const auto w_initial = mapa::bins_from_observations(weighted_obs);
+        assert(w_initial.size() == expected_initial_weighted.size());
+        for (size_t i = 0; i < w_initial.size(); ++i) {
+            const auto& a = w_initial[i];
+            const auto& e = expected_initial_weighted[i];
+            assert(a.score_min == e.score_min);
+            assert(a.score_max == e.score_max);
+            assert(std::fabs(a.n_obs - e.n_obs) < 1e-6);
+            assert(std::fabs(a.n_bads - e.n_bads) < 1e-6);
+            assert(a.count == e.count);
+            assert(a.count_bads == e.count_bads);
+        }
+    }
+
+    // Weighted bins differ from unweighted (at least one bad rate differs).
+    {
+        std::vector<std::pair<double, int>> unweighted_pairs;
+        for (const auto& [score, bad, weight] : weighted_obs) {
+            unweighted_pairs.emplace_back(score, bad);
+        }
+        const auto w_bins = mapa::bins_from_observations(weighted_obs);
+        const auto uw_bins = mapa::bins_from_observations(unweighted_pairs);
+        assert(w_bins.size() == uw_bins.size());
+        bool any_differ = false;
+        for (size_t i = 0; i < w_bins.size(); ++i) {
+            if (std::fabs(w_bins[i].bad_rate() - uw_bins[i].bad_rate()) > 1e-12) {
+                any_differ = true;
+                break;
+            }
+        }
+        assert(any_differ);
+    }
+
+    // Weighted pooling preserves totals.
+    {
+        const auto w_initial = mapa::bins_from_observations(weighted_obs);
+        const auto w_pooled = mapa::calibrate(weighted_obs);
+
+        double init_n_obs = 0, init_n_bads = 0;
+        long init_count = 0, init_count_bads = 0;
+        for (const auto& b : w_initial) {
+            init_n_obs += b.n_obs;
+            init_n_bads += b.n_bads;
+            init_count += b.count;
+            init_count_bads += b.count_bads;
+        }
+
+        double pooled_n_obs = 0, pooled_n_bads = 0;
+        long pooled_count = 0, pooled_count_bads = 0;
+        for (const auto& b : w_pooled) {
+            pooled_n_obs += b.n_obs;
+            pooled_n_bads += b.n_bads;
+            pooled_count += b.count;
+            pooled_count_bads += b.count_bads;
+        }
+
+        assert(std::fabs(pooled_n_obs - init_n_obs) < 1e-6);
+        assert(std::fabs(pooled_n_bads - init_n_bads) < 1e-6);
+        assert(pooled_count == init_count);
+        assert(pooled_count_bads == init_count_bads);
+    }
+
+    // Weighted pooling is monotone (non-increasing bad rate).
+    {
+        const auto w_pooled = mapa::calibrate(weighted_obs);
+        for (size_t i = 1; i < w_pooled.size(); ++i) {
+            assert(w_pooled[i].bad_rate() <= w_pooled[i - 1].bad_rate());
+        }
+    }
+
+    // Weighted pooling matches expected.
+    {
+        const auto expected_pooled_weighted = load_weighted_bins(fixtures_dir + "/expected_pooled_bins_weighted.csv");
+        const auto w_pooled = mapa::calibrate(weighted_obs);
+        assert(w_pooled.size() == expected_pooled_weighted.size());
+        for (size_t i = 0; i < w_pooled.size(); ++i) {
+            const auto& a = w_pooled[i];
+            const auto& e = expected_pooled_weighted[i];
+            assert(a.score_min == e.score_min);
+            assert(a.score_max == e.score_max);
+            assert(std::fabs(a.n_obs - e.n_obs) < 1e-6);
+            assert(std::fabs(a.n_bads - e.n_bads) < 1e-6);
+            assert(a.count == e.count);
+            assert(a.count_bads == e.count_bads);
+        }
+    }
+
+    // Weighted enforce_minimum_size uses counts (use_counts=true).
+    {
+        const auto w_pooled = mapa::calibrate(weighted_obs);
+        const auto w_min_size = mapa::enforce_minimum_size(w_pooled, kMinObs, kMinBads,
+                                                            /*increasing=*/false,
+                                                            /*min_confidence=*/std::nullopt,
+                                                            /*use_counts=*/true);
+        if (w_min_size.size() > 1) {
+            for (const auto& b : w_min_size) {
+                assert(b.count >= kMinObs);
+                assert(b.count_bads >= kMinBads);
+            }
+        }
+    }
+
+    // Weighted enforce_minimum_size matches expected.
+    {
+        const auto expected_min_size_weighted = load_weighted_bins(fixtures_dir + "/expected_min_size_bins_weighted.csv");
+        const auto w_pooled = mapa::calibrate(weighted_obs);
+        const auto w_min_size = mapa::enforce_minimum_size(w_pooled, kMinObs, kMinBads,
+                                                            /*increasing=*/false,
+                                                            /*min_confidence=*/std::nullopt,
+                                                            /*use_counts=*/true);
+        assert(w_min_size.size() == expected_min_size_weighted.size());
+        for (size_t i = 0; i < w_min_size.size(); ++i) {
+            const auto& a = w_min_size[i];
+            const auto& e = expected_min_size_weighted[i];
+            assert(a.score_min == e.score_min);
+            assert(a.score_max == e.score_max);
+            assert(std::fabs(a.n_obs - e.n_obs) < 1e-6);
+            assert(std::fabs(a.n_bads - e.n_bads) < 1e-6);
+            assert(a.count == e.count);
+            assert(a.count_bads == e.count_bads);
+        }
+    }
+
+    // Weighted run_pipeline matches expected repooled calibrated bins.
+    {
+        const auto expected_repooled_weighted =
+            load_weighted_calibrated_bins(fixtures_dir + "/expected_repooled_calibrated_bins_weighted.csv");
+        const auto w_pipeline = mapa::run_pipeline(weighted_obs, kBayesianK, kMinObs, kMinBads,
+                                                    /*prior=*/std::nullopt,
+                                                    /*increasing=*/false,
+                                                    /*min_confidence=*/std::nullopt,
+                                                    /*use_counts=*/true);
+        assert(w_pipeline.bands.size() == expected_repooled_weighted.size());
+        for (size_t i = 0; i < w_pipeline.bands.size(); ++i) {
+            const auto& a = w_pipeline.bands[i];
+            const auto& e = expected_repooled_weighted[i];
+            assert(a.score_min == e.score_min);
+            assert(a.score_max == e.score_max);
+            assert(std::fabs(a.n_obs - e.n_obs) < 1e-6);
+            assert(std::fabs(a.n_bads - e.n_bads) < 1e-6);
+            assert(a.count == e.count);
+            assert(a.count_bads == e.count_bads);
+            assert(std::fabs(a.pd - e.pd) < 1e-9);
+        }
+    }
+
+    // Weighted smoothed PDs match expected.
+    {
+        const auto expected_smoothed_weighted = load_score_pds(fixtures_dir + "/expected_smoothed_pds_weighted.csv");
+        const auto w_pipeline = mapa::run_pipeline(weighted_obs, kBayesianK, kMinObs, kMinBads,
+                                                    /*prior=*/std::nullopt,
+                                                    /*increasing=*/false,
+                                                    /*min_confidence=*/std::nullopt,
+                                                    /*use_counts=*/true);
+        for (const auto& row : expected_smoothed_weighted) {
+            double pd = w_pipeline.pd_for_score(row.score);
+            assert(std::fabs(pd - row.pd) < 1e-9);
+        }
+    }
+
+    std::cout << "All tests passed (unweighted: " << result.size()
+              << " pooled bins; weighted tests included).\n";
     return 0;
 }

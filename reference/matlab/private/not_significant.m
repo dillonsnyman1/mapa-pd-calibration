@@ -5,21 +5,26 @@ function result = not_significant(a, b, confidence)
 %
 %   result = NOT_SIGNIFICANT(a, b, confidence)
 %
-%   a, b        — single-row bin tables (n_obs, n_bads)
+%   a, b        — single-row bin tables (n_obs, n_bads, count, count_bads)
 %   confidence  — confidence level, e.g. 0.95
+%
+%   The pooled rate and standard error use raw counts (count / count_bads)
+%   so that the z-test reflects the actual number of observations.  The
+%   observed bad rates being compared use n_bads / n_obs (which may be
+%   value-weighted).
 %
 %   Uses sqrt(2)*erfinv(confidence) for the critical z-value, which is
 %   equivalent to norminv((1+confidence)/2) but requires no Statistics
 %   Toolbox — erfinv is a base MATLAB function.
 
-pooled_rate = (a.n_bads + b.n_bads) / (a.n_obs + b.n_obs);
+pooled_rate = (a.count_bads + b.count_bads) / (a.count + b.count);
 
 if pooled_rate <= 0 || pooled_rate >= 1
     result = true;
     return;
 end
 
-se         = sqrt(pooled_rate * (1 - pooled_rate) * (1/a.n_obs + 1/b.n_obs));
+se         = sqrt(pooled_rate * (1 - pooled_rate) * (1/a.count + 1/b.count));
 rate_a     = a.n_bads / a.n_obs;
 rate_b     = b.n_bads / b.n_obs;
 z          = abs(rate_a - rate_b) / se;

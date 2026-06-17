@@ -52,10 +52,13 @@ algorithm description.
 ```
 
 Each macro reads/writes datasets with columns `score_min`, `score_max`,
-`n_obs`, `n_bads` (plus `pd` for `%mapa_bayesian_adjustment`'s and
-`%mapa_repool_calibrated`'s output). If you already have pre-aggregated
-score bands, skip `%mapa_bins_from_observations` / `%mapa_calibrate` and
-call `%mapa_pool` directly on a dataset with those columns.
+`n_obs`, `n_bads`, `count`, `count_bads` (plus `pd` for
+`%mapa_bayesian_adjustment`'s and `%mapa_repool_calibrated`'s output).
+`n_obs`/`n_bads` are weighted sums; `count`/`count_bads` are raw
+observation counts (identical for unweighted data). If you already have
+pre-aggregated score bands, skip `%mapa_bins_from_observations` /
+`%mapa_calibrate` and call `%mapa_pool` directly on a dataset with those
+columns.
 
 `%mapa_interpolate_pd` is the odd one out: it doesn't operate on pools, but
 on individual scores. `scores` is a dataset with a single column, `score`,
@@ -77,6 +80,25 @@ well, even if they don't violate monotonicity:
 This produces fewer, larger bins whose bad rates are more reliably
 distinguishable from their neighbours. With the default (`min_confidence=0`),
 only monotonicity violations are merged, as before.
+
+### Value-weighted observations
+
+If the input dataset has a `weight` column, `%mapa_bins_from_observations`
+uses it automatically to produce value-weighted bins. Without it, all
+weights default to 1 (number-weighted) and `n_obs`/`n_bads` equal
+`count`/`count_bads`.
+
+```sas
+/* raw_obs has columns: score, bad, weight */
+%mapa_run_pipeline(in=raw_obs, out_bands=bands, k=10, min_obs=50, min_bads=10, use_counts=1)
+```
+
+The `use_counts=` parameter is available on both `%mapa_enforce_minimum_size`
+and `%mapa_run_pipeline`. When `use_counts=1` (the default), the
+`min_obs`/`min_bads` thresholds are checked against the raw observation
+counts (`count`/`count_bads`). Set `use_counts=0` to check against the
+weighted sums (`n_obs`/`n_bads`) instead. The z-test in confidence-based
+pooling always uses `count`/`count_bads` for sample sizes.
 
 ### Running the whole pipeline in one call
 

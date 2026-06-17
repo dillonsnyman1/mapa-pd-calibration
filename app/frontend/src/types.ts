@@ -1,4 +1,6 @@
-export type Observation = [score: number, bad: number];
+export type Observation = [score: number, bad: number, weight: number];
+
+export type WeightingMode = "number" | "value";
 
 export interface CalibrationParams {
   min_obs: number;
@@ -6,6 +8,7 @@ export interface CalibrationParams {
   k: number;
   min_confidence: number | null;
   increasing: boolean;
+  use_counts_for_thresholds: boolean;
 }
 
 export interface Band {
@@ -38,6 +41,8 @@ export interface StepBin {
   n_obs: number;
   n_bads: number;
   bad_rate: number;
+  count: number;
+  count_bads: number;
 }
 
 export interface Step {
@@ -52,6 +57,8 @@ export interface PdStepBin {
   n_obs: number;
   n_bads: number;
   pd: number;
+  count: number;
+  count_bads: number;
 }
 
 export interface PdStep {

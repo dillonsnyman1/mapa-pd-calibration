@@ -5,7 +5,10 @@
 # calibrated PD never gets worse.
 #
 # Bins are represented as data.frames with columns:
-#   score_min, score_max, n_obs, n_bads
+#   score_min, score_max, n_obs, n_bads, count, count_bads
+# For unweighted data, count == n_obs and count_bads == n_bads.
+# For value-weighted data, n_obs and n_bads are weighted sums while
+# count and count_bads are raw observation/default counts.
 # Calibrated bins also have a `pd` column.
 #
 # Run the full pipeline with run_pipeline(), or call the steps individually.
@@ -31,12 +34,15 @@
 
 # Two-proportion z-test: TRUE means the bad rates of a and b are NOT
 # significantly different at the given confidence level (so merge them).
+# Uses raw counts (count, count_bads) for sample sizes, matching the
+# Python reference. bad_rate (n_bads/n_obs) is still used for the rate
+# difference in the numerator.
 .not_significant <- function(a, b, confidence) {
-  pooled_rate <- (a$n_bads + b$n_bads) / (a$n_obs + b$n_obs)
+  pooled_rate <- (a$count_bads + b$count_bads) / (a$count + b$count)
   if (pooled_rate <= 0 || pooled_rate >= 1) {
     return(TRUE)
   }
-  se <- sqrt(pooled_rate * (1 - pooled_rate) * (1 / a$n_obs + 1 / b$n_obs))
+  se <- sqrt(pooled_rate * (1 - pooled_rate) * (1 / a$count + 1 / b$count))
   z <- abs(.bad_rate(a) - .bad_rate(b)) / se
   z_critical <- qnorm((1 + confidence) / 2)
   z < z_critical
@@ -45,10 +51,12 @@
 # Merge two adjacent bins into one spanning their combined score range.
 .merge_bins <- function(a, b) {
   data.frame(
-    score_min = a$score_min,
-    score_max = b$score_max,
-    n_obs     = a$n_obs + b$n_obs,
-    n_bads    = a$n_bads + b$n_bads,
+    score_min  = a$score_min,
+    score_max  = b$score_max,
+    n_obs      = a$n_obs + b$n_obs,
+    n_bads     = a$n_bads + b$n_bads,
+    count      = a$count + b$count,
+    count_bads = a$count_bads + b$count_bads,
     stringsAsFactors = FALSE
   )
 }
@@ -67,11 +75,13 @@
   n_obs  <- a$n_obs + b$n_obs
   n_bads <- a$n_bads + b$n_bads
   data.frame(
-    score_min = a$score_min,
-    score_max = b$score_max,
-    n_obs     = n_obs,
-    n_bads    = n_bads,
-    pd        = (a$pd * a$n_obs + b$pd * b$n_obs) / n_obs,
+    score_min  = a$score_min,
+    score_max  = b$score_max,
+    n_obs      = n_obs,
+    n_bads     = n_bads,
+    pd         = (a$pd * a$n_obs + b$pd * b$n_obs) / n_obs,
+    count      = a$count + b$count,
+    count_bads = a$count_bads + b$count_bads,
     stringsAsFactors = FALSE
   )
 }
@@ -84,29 +94,41 @@
 #' ordered by score ascending.
 #'
 #' @param observations A data.frame or matrix with columns `score` and `bad`,
-#'   or a list of two-element vectors c(score, bad). The `bad` column should
-#'   be 1 for a default and 0 otherwise.
+#'   and an optional third column `weight`. Or a list of two-/three-element
+#'   vectors c(score, bad [, weight]). The `bad` column should be 1 for a
+#'   default and 0 otherwise. When `weight` is provided, `n_obs` and `n_bads`
+#'   become weighted sums; `count` and `count_bads` track the raw (unweighted)
+#'   observation and default counts. When no weight column is present,
+#'   weight = 1 for every observation (so count == n_obs, count_bads == n_bads).
 #' @return A data.frame with columns score_min, score_max, n_obs, n_bads,
-#'   one row per unique score value.
+#'   count, count_bads — one row per unique score value.
 bins_from_observations <- function(observations) {
   if (is.data.frame(observations)) {
-    scores <- observations$score
-    bads   <- observations$bad
+    scores  <- observations$score
+    bads    <- observations$bad
+    weights <- if (!is.null(observations$weight)) observations$weight else NULL
   } else {
-    # Assume matrix or list of pairs
+    # Assume matrix or list of pairs/triples
     observations <- as.data.frame(observations)
-    scores <- observations[[1]]
-    bads   <- observations[[2]]
+    scores  <- observations[[1]]
+    bads    <- observations[[2]]
+    weights <- if (ncol(observations) >= 3) observations[[3]] else NULL
+  }
+
+  if (is.null(weights)) {
+    weights <- rep(1, length(scores))
   }
 
   unique_scores <- sort(unique(scores))
   rows <- lapply(unique_scores, function(s) {
     idx <- scores == s
     data.frame(
-      score_min = s,
-      score_max = s,
-      n_obs     = sum(idx),
-      n_bads    = sum(as.integer(bads[idx])),
+      score_min  = s,
+      score_max  = s,
+      n_obs      = sum(weights[idx]),
+      n_bads     = sum(as.integer(bads[idx]) * weights[idx]),
+      count      = sum(idx),
+      count_bads = sum(as.integer(bads[idx])),
       stringsAsFactors = FALSE
     )
   })
@@ -164,17 +186,23 @@ calibrate <- function(observations, increasing = FALSE, min_confidence = NULL) {
 
 #' Pool bins below minimum size thresholds, then re-run mapa.
 #'
-#' A bin "violates" if n_obs < min_obs or n_bads < min_bads. Each violating
-#' bin is merged into whichever adjacent bin has the closer bad rate.
+#' A bin "violates" if its observation or bad measure falls below the
+#' threshold. Each violating bin is merged into whichever adjacent bin
+#' has the closer bad rate.
 #'
 #' @param bins A data.frame of bins, typically from mapa().
 #' @param min_obs Minimum observations required per bin (default 0).
 #' @param min_bads Minimum bads required per bin (default 0).
 #' @param increasing See mapa().
 #' @param min_confidence See mapa().
+#' @param use_counts If TRUE (default), check thresholds against raw
+#'   observation/bad counts (count, count_bads). If FALSE, check against
+#'   weighted sums (n_obs, n_bads). For number-weighted data both are
+#'   identical.
 #' @return A data.frame of pooled bins, monotone.
 enforce_minimum_size <- function(bins, min_obs = 0, min_bads = 0,
-                                  increasing = FALSE, min_confidence = NULL) {
+                                  increasing = FALSE, min_confidence = NULL,
+                                  use_counts = TRUE) {
   # Work on a list of single-row data.frames for easy splicing
   bin_list <- lapply(seq_len(nrow(bins)), function(i) bins[i, , drop = FALSE])
 
@@ -186,7 +214,9 @@ enforce_minimum_size <- function(bins, min_obs = 0, min_bads = 0,
     violator <- NULL
     for (i in seq_len(n)) {
       b <- bin_list[[i]]
-      if (b$n_obs < min_obs || b$n_bads < min_bads) {
+      obs_val  <- if (use_counts) b$count else b$n_obs
+      bads_val <- if (use_counts) b$count_bads else b$n_bads
+      if (obs_val < min_obs || bads_val < min_bads) {
         violator <- i
         break
       }
@@ -305,14 +335,16 @@ interpolate_pd <- function(bins, score) {
 #' @param prior PD to shrink toward; see apply_bayesian_adjustment().
 #' @param increasing Direction of monotonicity; see mapa().
 #' @param min_confidence Confidence-based pooling threshold; see mapa().
+#' @param use_counts See enforce_minimum_size().
 #' @return A list with:
 #'   $bands       — data.frame of final calibrated bins
 #'   $pd_for_score — function(score) returning a smoothed PD
 run_pipeline <- function(observations, k, min_obs = 0, min_bads = 0,
                           prior = NULL, increasing = FALSE,
-                          min_confidence = NULL) {
+                          min_confidence = NULL, use_counts = TRUE) {
   pooled     <- calibrate(observations, increasing, min_confidence)
-  sized      <- enforce_minimum_size(pooled, min_obs, min_bads, increasing, min_confidence)
+  sized      <- enforce_minimum_size(pooled, min_obs, min_bads, increasing,
+                                     min_confidence, use_counts)
   calibrated <- apply_bayesian_adjustment(sized, k, prior)
   bands      <- repool_calibrated_bins(calibrated, increasing)
 

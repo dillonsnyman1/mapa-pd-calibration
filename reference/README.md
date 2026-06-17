@@ -54,3 +54,24 @@ explanation of the algorithm.
   running MAPA on `expected_initial_bins.csv` with `min_confidence=0.95`:
   `score_min,score_max,n_obs,n_bads`. See the "Confidence-based pooling"
   section in [`../docs/mapa-methodology.md`](../docs/mapa-methodology.md).
+
+### Weighted fixtures
+
+Parallel set of fixtures for value-weighted observations (see the "Number
+vs. value weighting" section in
+[`../docs/mapa-methodology.md`](../docs/mapa-methodology.md)):
+
+- `fixtures/raw_observations_weighted.csv` - weighted observation-level
+  data: `score,bad,weight`.
+- `fixtures/expected_initial_bins_weighted.csv` - expected weighted initial
+  bins: `score_min,score_max,n_obs,n_bads,count,count_bads`.
+- `fixtures/expected_pooled_bins_weighted.csv` - expected weighted pooled
+  bins.
+- `fixtures/expected_min_size_bins_weighted.csv` - expected weighted
+  minimum-size-enforced bins.
+- `fixtures/expected_calibrated_bins_weighted.csv` - expected weighted
+  calibrated bins (after Bayesian adjustment).
+- `fixtures/expected_repooled_calibrated_bins_weighted.csv` - expected
+  weighted re-pooled calibrated bins.
+- `fixtures/expected_smoothed_pds_weighted.csv` - expected weighted
+  smoothed PDs.
