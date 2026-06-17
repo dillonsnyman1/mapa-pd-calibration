@@ -74,8 +74,8 @@ def calibrate(request: CalibrationRequest) -> CalibrationResponse:
 
     actual_bins = bins_from_observations(observations)
 
-    deviations = [abs(b.n_bads / b.n_obs - interpolate_pd(bands, b.score_min)) for b in actual_bins]
-    mad = sum(deviations) / len(deviations)
+    total_weight = sum(b.n_obs for b in actual_bins)
+    mad = sum(abs(b.n_bads / b.n_obs - interpolate_pd(bands, b.score_min)) * b.n_obs for b in actual_bins) / total_weight
 
     return CalibrationResponse(
         bands=[

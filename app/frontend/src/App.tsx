@@ -111,7 +111,7 @@ export default function App() {
           <>
             <BacktestChart smoothed={calibration.smoothed} actual={calibration.actual} />
             <p className="muted-note">
-              Mean absolute deviation (predicted vs. actual, per score, averaged): {calibration.metrics.mad.toFixed(4)}
+              Weighted mean absolute deviation (predicted vs. observed bad rate): {calibration.metrics.mad.toFixed(4)}
             </p>
           </>
         ) : (
