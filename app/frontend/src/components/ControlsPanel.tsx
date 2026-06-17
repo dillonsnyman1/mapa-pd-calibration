@@ -50,6 +50,8 @@ export function ControlsPanel({
   params, onParamsChange, onObservationsChange, onError, datasetLabel, error,
   weightingMode, onWeightingModeChange,
 }: Props) {
+  const useWeightedThresholds = weightingMode === "value" && !params.use_counts_for_thresholds;
+
   const update = <K extends keyof CalibrationParams>(key: K, value: CalibrationParams[K]) => {
     onParamsChange({ ...params, [key]: value });
   };
@@ -133,28 +135,48 @@ export function ControlsPanel({
         <div className="controls-grid">
           <div className="control-field">
             <label>
-              Minimum observations per band <span className="value">({params.min_obs})</span>
+              {useWeightedThresholds ? "Minimum weighted exposure per band" : "Minimum observations per band"}
+              {!useWeightedThresholds && <> <span className="value">({params.min_obs})</span></>}
             </label>
-            <input
-              type="range"
-              min={0}
-              max={200}
-              value={params.min_obs}
-              onChange={(e) => update("min_obs", Number(e.target.value))}
-            />
+            {useWeightedThresholds ? (
+              <input
+                type="number"
+                min={0}
+                value={params.min_obs}
+                onChange={(e) => update("min_obs", Math.max(0, Number(e.target.value) || 0))}
+              />
+            ) : (
+              <input
+                type="range"
+                min={0}
+                max={200}
+                value={params.min_obs}
+                onChange={(e) => update("min_obs", Number(e.target.value))}
+              />
+            )}
           </div>
 
           <div className="control-field">
             <label>
-              Minimum bads per band <span className="value">({params.min_bads})</span>
+              {useWeightedThresholds ? "Minimum weighted bads per band" : "Minimum bads per band"}
+              {!useWeightedThresholds && <> <span className="value">({params.min_bads})</span></>}
             </label>
-            <input
-              type="range"
-              min={0}
-              max={50}
-              value={params.min_bads}
-              onChange={(e) => update("min_bads", Number(e.target.value))}
-            />
+            {useWeightedThresholds ? (
+              <input
+                type="number"
+                min={0}
+                value={params.min_bads}
+                onChange={(e) => update("min_bads", Math.max(0, Number(e.target.value) || 0))}
+              />
+            ) : (
+              <input
+                type="range"
+                min={0}
+                max={50}
+                value={params.min_bads}
+                onChange={(e) => update("min_bads", Number(e.target.value))}
+              />
+            )}
           </div>
 
           <div className="control-field">
