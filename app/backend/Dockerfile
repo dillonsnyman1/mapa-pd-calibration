@@ -12,5 +12,6 @@ COPY app/backend/main.py app/backend/pipeline.py app/backend/pooling_steps.py ap
 # own __file__, landing at /reference/python and /reference/fixtures.
 COPY reference/python/mapa.py /reference/python/mapa.py
 COPY reference/fixtures/raw_observations.csv /reference/fixtures/raw_observations.csv
+COPY reference/fixtures/raw_observations_weighted.csv /reference/fixtures/raw_observations_weighted.csv
 
 CMD ["main.handler"]
