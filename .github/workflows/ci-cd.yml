@@ -57,6 +57,8 @@ jobs:
   r-tests:
     name: R tests
     runs-on: ubuntu-latest
+    env:
+      R_LIBS_USER: ${{ github.workspace }}/R-lib
     steps:
       - uses: actions/checkout@v4
 
@@ -64,11 +66,20 @@ jobs:
         with:
           r-version: release
 
+      - name: Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: r-libs-${{ runner.os }}-${{ hashFiles('.github/workflows/ci-cd.yml') }}
+          restore-keys: r-libs-${{ runner.os }}-
+
       - name: Install system dependencies
         run: sudo apt-get install -y libuv1-dev
 
       - name: Install testthat
-        run: Rscript -e "install.packages('testthat', repos='https://cloud.r-project.org')"
+        run: |
+          mkdir -p "$R_LIBS_USER"
+          Rscript -e "if (!requireNamespace('testthat', quietly=TRUE)) install.packages('testthat', repos='https://cloud.r-project.org', lib=Sys.getenv('R_LIBS_USER'))"
 
       - name: Run R tests
         run: Rscript reference/r/test_mapa.R
