@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchCalibration, fetchExample, fetchPipeline } from "./api";
+import { fetchCalibration, fetchExample, fetchExampleWeighted, fetchPipeline } from "./api";
 import { BacktestChart } from "./components/BacktestChart";
 import { CalibrationChart } from "./components/CalibrationChart";
 import { ControlsPanel } from "./components/ControlsPanel";
@@ -27,30 +27,26 @@ function useDebounced<T>(value: T, delayMs: number): T {
 export default function App() {
   const [params, setParams] = useState<CalibrationParams>(DEFAULT_PARAMS);
   const [weightingMode, setWeightingMode] = useState<WeightingMode>("number");
-  const [rawObservations, setRawObservations] = useState<Observation[] | null>(null);
-  const [observations, setObservations] = useState<Observation[] | null>(null);
-  const [exampleCount, setExampleCount] = useState<number | null>(null);
+  const [customObservations, setCustomObservations] = useState<Observation[] | null>(null);
+  const [exampleObs, setExampleObs] = useState<Observation[] | null>(null);
+  const [exampleWeightedObs, setExampleWeightedObs] = useState<Observation[] | null>(null);
   const [calibration, setCalibration] = useState<CalibrationResponse | null>(null);
   const [pipeline, setPipeline] = useState<PipelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (rawObservations === null) {
-      setObservations(null);
-      return;
-    }
-    if (weightingMode === "number") {
-      setObservations(rawObservations.map(([s, b]) => [s, b, 1]));
-    } else {
-      setObservations(rawObservations);
-    }
-  }, [rawObservations, weightingMode]);
+  const isCustom = customObservations !== null;
+  const observations: Observation[] | null = isCustom
+    ? (weightingMode === "number" ? customObservations.map(([s, b]) => [s, b, 1]) : customObservations)
+    : weightingMode === "value"
+      ? exampleWeightedObs
+      : exampleObs;
 
   const debouncedParams = useDebounced(params, 300);
   const debouncedObservations = useDebounced(observations, 300);
 
   useEffect(() => {
-    fetchExample().then((obs) => setExampleCount(obs.length)).catch((e) => setError(String(e)));
+    fetchExample().then(setExampleObs).catch((e) => setError(String(e)));
+    fetchExampleWeighted().then(setExampleWeightedObs).catch((e) => setError(String(e)));
   }, []);
 
   useEffect(() => {
@@ -65,8 +61,9 @@ export default function App() {
       .catch((e) => setError(String(e)));
   }, [debouncedObservations, debouncedParams]);
 
-  const datasetLabel = observations
-    ? `Custom upload (${observations.length} observations)`
+  const exampleCount = isCustom ? null : observations?.length ?? null;
+  const datasetLabel = isCustom
+    ? `Custom upload (${customObservations.length} observations)`
     : exampleCount !== null
       ? `Bundled example (${exampleCount} observations)`
       : "Loading...";
@@ -88,7 +85,7 @@ export default function App() {
         <ControlsPanel
           params={params}
           onParamsChange={setParams}
-          onObservationsChange={setRawObservations}
+          onObservationsChange={setCustomObservations}
           onError={setError}
           datasetLabel={datasetLabel}
           error={error}

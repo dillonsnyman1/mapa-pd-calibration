@@ -22,6 +22,12 @@ def load_example_observations() -> List[Observation]:
         return [(float(row["score"]), int(row["bad"]), 1.0) for row in reader]
 
 
+def load_example_observations_weighted() -> List[Observation]:
+    with open(FIXTURES_DIR / "raw_observations_weighted.csv", newline="") as f:
+        reader = csv.DictReader(f)
+        return [(float(row["score"]), int(row["bad"]), float(row["weight"])) for row in reader]
+
+
 def compute_smoothed(bands: List[CalibratedBin], num_points: int = 200) -> list[tuple[float, float]]:
     score_min = bands[0].score_min
     score_max = bands[-1].score_max

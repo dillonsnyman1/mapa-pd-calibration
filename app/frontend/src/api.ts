@@ -13,6 +13,12 @@ export async function fetchExample(): Promise<Observation[]> {
   return res.json();
 }
 
+export async function fetchExampleWeighted(): Promise<Observation[]> {
+  const res = await fetch(`${BASE_URL}/api/example-weighted`);
+  if (!res.ok) throw new Error(`/api/example-weighted failed: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchCalibration(
   observations: Observation[] | null,
   params: CalibrationParams,

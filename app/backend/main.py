@@ -20,7 +20,7 @@ from mapa import (  # noqa: E402
     repool_calibrated_bins,
 )
 
-from pipeline import compute_smoothed, load_example_observations, run_calibration
+from pipeline import compute_smoothed, load_example_observations, load_example_observations_weighted, run_calibration
 from pooling_steps import minimum_size_steps, pooling_steps, repool_pd_steps
 from schemas import (
     Band,
@@ -50,6 +50,11 @@ app.add_middleware(
 @app.get("/api/example")
 def get_example() -> list[Observation]:
     return load_example_observations()
+
+
+@app.get("/api/example-weighted")
+def get_example_weighted() -> list[Observation]:
+    return load_example_observations_weighted()
 
 
 @app.post("/api/calibrate")
