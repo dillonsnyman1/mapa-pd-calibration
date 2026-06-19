@@ -72,6 +72,28 @@ a:hover {
   margin-bottom: 1rem;
 }
 
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.card-header-row h2 {
+  margin-bottom: 0.25rem;
+}
+
+.card-header-row p {
+  margin-bottom: 0;
+}
+
+.card-header-row button {
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
 fieldset {
   border: none;
   margin: 0;

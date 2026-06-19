@@ -4,7 +4,19 @@ import { BacktestChart } from "./components/BacktestChart";
 import { CalibrationChart } from "./components/CalibrationChart";
 import { ControlsPanel } from "./components/ControlsPanel";
 import { PipelineView } from "./components/PipelineView";
-import type { CalibrationParams, CalibrationResponse, Observation, PipelineResponse, WeightingMode } from "./types";
+import type { CalibrationParams, CalibrationResponse, Observation, PipelineResponse, ScorePd, WeightingMode } from "./types";
+
+function downloadSmoothedCsv(smoothed: ScorePd[]) {
+  const header = "score,pd\n";
+  const rows = smoothed.map((r) => `${r.score},${r.pd}`).join("\n");
+  const blob = new Blob([header + rows], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "score_to_pd_mapping.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const DEFAULT_PARAMS: CalibrationParams = {
   min_obs: 50,
@@ -95,8 +107,17 @@ export default function App() {
       </div>
 
       <div className="card">
-        <h2>Calibration curve</h2>
-        <p>Unsmoothed (pooled-band) and smoothed (log-odds interpolated) score-to-PD mappings.</p>
+        <div className="card-header-row">
+          <div>
+            <h2>Calibration curve</h2>
+            <p>Unsmoothed (pooled-band) and smoothed (log-odds interpolated) score-to-PD mappings.</p>
+          </div>
+          {calibration && (
+            <button type="button" onClick={() => downloadSmoothedCsv(calibration.smoothed)}>
+              Download mapping CSV
+            </button>
+          )}
+        </div>
         {calibration ? (
           <CalibrationChart bands={calibration.bands} smoothed={calibration.smoothed} />
         ) : (
