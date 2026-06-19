@@ -17,6 +17,7 @@ interface Props {
   animateSmoothed?: boolean;
   anchors?: ScorePd[];
   showBandRanges?: boolean;
+  disableAllAnimation?: boolean;
 }
 
 interface Point {
@@ -26,7 +27,7 @@ interface Point {
   anchor?: number;
 }
 
-export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anchors, showBandRanges = false }: Props) {
+export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anchors, showBandRanges = false, disableAllAnimation = false }: Props) {
   const stepPoints: Point[] = [];
   for (const b of bands) {
     stepPoints.push({ score: b.score_min, unsmoothed: b.pd });
@@ -86,7 +87,7 @@ export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anc
           stroke="#f97316"
           strokeWidth={2}
           dot={false}
-          isAnimationActive={animateSmoothed}
+          isAnimationActive={animateSmoothed && !disableAllAnimation}
           connectNulls
         />
         {anchors && (

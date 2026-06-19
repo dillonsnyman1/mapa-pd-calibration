@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import html2canvas from "html2canvas";
+import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import { StackStepper } from "./StackStepper";
 import { BayesianTransition } from "./BayesianTransition";
 import { SmoothingView } from "./SmoothingView";
@@ -106,6 +109,86 @@ export function PipelineView({ pipeline }: Props) {
     return () => clearTimeout(timer);
   }, [playing, frameIndex, frames]);
 
+  const captureRef = useRef<HTMLDivElement>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordingProgress, setRecordingProgress] = useState("");
+
+  async function recordGif() {
+    if (!captureRef.current || recording) return;
+
+    flushSync(() => {
+      setRecording(true);
+      setPlaying(false);
+      setRecordingProgress("Preparing...");
+    });
+
+    // Pre-scan all frames to find max container height for consistent GIF dimensions
+    let maxHeight = 0;
+    for (let i = 0; i < frames.length; i++) {
+      flushSync(() => setFrameIndex(i));
+      await new Promise<void>((r) => requestAnimationFrame(r));
+      maxHeight = Math.max(maxHeight, captureRef.current!.offsetHeight);
+    }
+    captureRef.current!.style.minHeight = `${maxHeight}px`;
+
+    const encoder = GIFEncoder();
+    let gifWidth = 0;
+    let gifHeight = 0;
+
+    for (let i = 0; i < frames.length; i++) {
+      flushSync(() => {
+        setFrameIndex(i);
+        setRecordingProgress(`Capturing frame ${i + 1} of ${frames.length}...`);
+      });
+
+      await new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 120)));
+
+      const canvas = await html2canvas(captureRef.current!, {
+        scale: 1,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+
+      if (i === 0) {
+        gifWidth = canvas.width;
+        gifHeight = canvas.height;
+      }
+
+      const normalized = document.createElement("canvas");
+      normalized.width = gifWidth;
+      normalized.height = gifHeight;
+      const ctx = normalized.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, gifWidth, gifHeight);
+      ctx.drawImage(canvas, 0, 0);
+
+      const { data } = ctx.getImageData(0, 0, gifWidth, gifHeight);
+      const palette = quantize(data, 256);
+      const index = applyPalette(data, palette);
+      encoder.writeFrame(index, gifWidth, gifHeight, {
+        palette,
+        delay: Math.round(durationFor(frames[i]) / 10),
+      });
+    }
+
+    flushSync(() => setRecordingProgress("Finalizing..."));
+    await new Promise<void>((r) => setTimeout(r, 50));
+
+    encoder.finish();
+    captureRef.current!.style.minHeight = "";
+
+    const blob = new Blob([encoder.bytes()], { type: "image/gif" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "calibration_pipeline.gif";
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setRecording(false);
+    setRecordingProgress("");
+  }
+
   const frame = frames[frameIndex];
   const atEnd = frameIndex === frames.length - 1;
 
@@ -118,98 +201,103 @@ export function PipelineView({ pipeline }: Props) {
             setFrameIndex(0);
             setPlaying(false);
           }}
-          disabled={frameIndex === 0 && !playing}
+          disabled={recording || (frameIndex === 0 && !playing)}
         >
           Reset
         </button>
         <button
           type="button"
           onClick={() => setFrameIndex((i) => Math.max(0, i - 1))}
-          disabled={frameIndex === 0}
+          disabled={recording || frameIndex === 0}
         >
           Prev
         </button>
         <button
           type="button"
           onClick={() => setFrameIndex((i) => Math.min(frames.length - 1, i + 1))}
-          disabled={atEnd}
+          disabled={recording || atEnd}
         >
           Next
         </button>
         <button
           type="button"
           onClick={() => setPlaying((p) => !p)}
-          disabled={atEnd && !playing}
+          disabled={recording || (atEnd && !playing)}
         >
           {playing ? "Pause" : "Play"}
+        </button>
+        <button type="button" onClick={recordGif} disabled={recording}>
+          {recording ? recordingProgress : "Download GIF"}
         </button>
         <span className="step-count">
           {STAGE_LABELS[frame.stage]} — Step {frameIndex + 1} / {frames.length}
         </span>
       </div>
 
-      <p className="stepper-reason">{STAGE_DESCRIPTIONS[frame.stage]}</p>
-      {describeStep(frame, pipeline) && <p className="stepper-reason">{describeStep(frame, pipeline)}</p>}
+      <div ref={captureRef}>
+        <p className="stepper-reason">{STAGE_DESCRIPTIONS[frame.stage]}</p>
+        {describeStep(frame, pipeline) && <p className="stepper-reason">{describeStep(frame, pipeline)}</p>}
 
-      {frame.stage === 0 && (
-        <StackStepper
-          steps={pipeline.pooling}
-          index={frame.step}
-          valueOf={(b) => b.bad_rate}
-          valueLabel="bad rate"
-          pushMessage={(step) => {
-            const b = step.stack[step.stack.length - 1];
-            return `Pushed the ${b.score_min}-${b.score_max} bin (bad rate ${b.bad_rate.toFixed(3)}) onto the stack.`;
-          }}
-        />
-      )}
+        {frame.stage === 0 && (
+          <StackStepper
+            steps={pipeline.pooling}
+            index={frame.step}
+            valueOf={(b) => b.bad_rate}
+            valueLabel="bad rate"
+            pushMessage={(step) => {
+              const b = step.stack[step.stack.length - 1];
+              return `Pushed the ${b.score_min}-${b.score_max} bin (bad rate ${b.bad_rate.toFixed(3)}) onto the stack.`;
+            }}
+          />
+        )}
 
-      {frame.stage === 1 && (
-        <StackStepper
-          steps={pipeline.minimum_size}
-          index={frame.step}
-          valueOf={(b) => b.bad_rate}
-          valueLabel="bad rate"
-          pushMessage={(step) => {
-            if (step.stack.length > 1) {
-              return "Starting point: the bands produced by pooling, before checking minimum size and default-count requirements.";
-            }
-            const b = step.stack[0];
-            return `Re-checking monotonicity after a merge: pushed the ${b.score_min}-${b.score_max} band (bad rate ${b.bad_rate.toFixed(3)}) onto the stack.`;
-          }}
-          referenceBands={pipeline.pooling[pipeline.pooling.length - 1].stack.map((b) => ({
-            score_min: b.score_min,
-            score_max: b.score_max,
-            value: b.bad_rate,
-          }))}
-          referenceLabel="Post-pooling bad rate (before minimum-size enforcement)"
-        />
-      )}
+        {frame.stage === 1 && (
+          <StackStepper
+            steps={pipeline.minimum_size}
+            index={frame.step}
+            valueOf={(b) => b.bad_rate}
+            valueLabel="bad rate"
+            pushMessage={(step) => {
+              if (step.stack.length > 1) {
+                return "Starting point: the bands produced by pooling, before checking minimum size and default-count requirements.";
+              }
+              const b = step.stack[0];
+              return `Re-checking monotonicity after a merge: pushed the ${b.score_min}-${b.score_max} band (bad rate ${b.bad_rate.toFixed(3)}) onto the stack.`;
+            }}
+            referenceBands={pipeline.pooling[pipeline.pooling.length - 1].stack.map((b) => ({
+              score_min: b.score_min,
+              score_max: b.score_max,
+              value: b.bad_rate,
+            }))}
+            referenceLabel="Post-pooling bad rate (before minimum-size enforcement)"
+          />
+        )}
 
-      {frame.stage === 2 && (
-        <BayesianTransition bands={pipeline.bayesian} current={frame.current} shrunk={frame.shrunk} />
-      )}
+        {frame.stage === 2 && (
+          <BayesianTransition bands={pipeline.bayesian} current={frame.current} shrunk={frame.shrunk} disableAllAnimation={recording} />
+        )}
 
-      {frame.stage === 3 && (
-        <StackStepper
-          steps={pipeline.repooling}
-          index={frame.step}
-          valueOf={(b) => b.pd}
-          valueLabel="pd"
-          pushMessage={(step) => {
-            const b = step.stack[step.stack.length - 1];
-            return `Pushed the ${b.score_min}-${b.score_max} band (PD ${b.pd.toFixed(3)}) onto the stack.`;
-          }}
-          referenceBands={pipeline.bayesian.map((b) => ({
-            score_min: b.score_min,
-            score_max: b.score_max,
-            value: b.pd,
-          }))}
-          referenceLabel="Post-Bayesian PD (before re-pooling)"
-        />
-      )}
+        {frame.stage === 3 && (
+          <StackStepper
+            steps={pipeline.repooling}
+            index={frame.step}
+            valueOf={(b) => b.pd}
+            valueLabel="pd"
+            pushMessage={(step) => {
+              const b = step.stack[step.stack.length - 1];
+              return `Pushed the ${b.score_min}-${b.score_max} band (PD ${b.pd.toFixed(3)}) onto the stack.`;
+            }}
+            referenceBands={pipeline.bayesian.map((b) => ({
+              score_min: b.score_min,
+              score_max: b.score_max,
+              value: b.pd,
+            }))}
+            referenceLabel="Post-Bayesian PD (before re-pooling)"
+          />
+        )}
 
-      {frame.stage === 4 && <SmoothingView smoothing={pipeline.smoothing} phase={frame.phase} />}
+        {frame.stage === 4 && <SmoothingView smoothing={pipeline.smoothing} phase={frame.phase} disableAllAnimation={recording} />}
+      </div>
     </div>
   );
 }

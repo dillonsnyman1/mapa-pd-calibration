@@ -16,6 +16,7 @@ interface Props {
   bands: BayesianBand[];
   current: number;
   shrunk: boolean;
+  disableAllAnimation?: boolean;
 }
 
 interface Point {
@@ -25,7 +26,7 @@ interface Point {
   highlight?: number;
 }
 
-export function BayesianTransition({ bands, current, shrunk }: Props) {
+export function BayesianTransition({ bands, current, shrunk, disableAllAnimation = false }: Props) {
   const scoreMin = bands[0].score_min;
   const scoreMax = bands[bands.length - 1].score_max;
 
@@ -104,7 +105,7 @@ export function BayesianTransition({ bands, current, shrunk }: Props) {
             stroke="#f97316"
             strokeWidth={2}
             dot={false}
-            isAnimationActive
+            isAnimationActive={!disableAllAnimation}
             animationDuration={250}
             animationEasing="ease-in-out"
             connectNulls

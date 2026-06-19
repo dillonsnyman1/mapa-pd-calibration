@@ -4,9 +4,10 @@ import type { SmoothingStage } from "../types";
 interface Props {
   smoothing: SmoothingStage;
   phase: "step" | "anchors" | "smoothed";
+  disableAllAnimation?: boolean;
 }
 
-export function SmoothingView({ smoothing, phase }: Props) {
+export function SmoothingView({ smoothing, phase, disableAllAnimation = false }: Props) {
   const anchors =
     phase === "step"
       ? undefined
@@ -20,6 +21,7 @@ export function SmoothingView({ smoothing, phase }: Props) {
         animateSmoothed={phase === "smoothed"}
         anchors={anchors}
         showBandRanges
+        disableAllAnimation={disableAllAnimation}
       />
     </div>
   );
