@@ -126,7 +126,7 @@ export function PipelineView({ pipeline }: Props) {
     let maxHeight = 0;
     for (let i = 0; i < frames.length; i++) {
       flushSync(() => setFrameIndex(i));
-      await new Promise<void>((r) => requestAnimationFrame(r));
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
       maxHeight = Math.max(maxHeight, captureRef.current!.offsetHeight);
     }
     captureRef.current!.style.minHeight = `${maxHeight}px`;
@@ -177,7 +177,8 @@ export function PipelineView({ pipeline }: Props) {
     encoder.finish();
     captureRef.current!.style.minHeight = "";
 
-    const blob = new Blob([encoder.bytes()], { type: "image/gif" });
+    const bytes = encoder.bytes();
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "image/gif" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
