@@ -5,9 +5,10 @@ interface Props {
   smoothing: SmoothingStage;
   phase: "step" | "anchors" | "smoothed";
   disableAllAnimation?: boolean;
+  yMax?: number;
 }
 
-export function SmoothingView({ smoothing, phase, disableAllAnimation = false }: Props) {
+export function SmoothingView({ smoothing, phase, disableAllAnimation = false, yMax }: Props) {
   const anchors =
     phase === "step"
       ? undefined
@@ -22,6 +23,7 @@ export function SmoothingView({ smoothing, phase, disableAllAnimation = false }:
         anchors={anchors}
         showBandRanges
         disableAllAnimation={disableAllAnimation}
+        yMax={yMax}
       />
     </div>
   );

@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { niceYMax } from "../chart-utils";
 import type { Band, ScorePd } from "../types";
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
   anchors?: ScorePd[];
   showBandRanges?: boolean;
   disableAllAnimation?: boolean;
+  yMax?: number;
 }
 
 interface Point {
@@ -27,7 +29,7 @@ interface Point {
   anchor?: number;
 }
 
-export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anchors, showBandRanges = false, disableAllAnimation = false }: Props) {
+export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anchors, showBandRanges = false, disableAllAnimation = false, yMax }: Props) {
   const stepPoints: Point[] = [];
   for (const b of bands) {
     stepPoints.push({ score: b.score_min, unsmoothed: b.pd });
@@ -38,6 +40,13 @@ export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anc
   const anchorPoints: Point[] = (anchors ?? []).map((p) => ({ score: p.score, anchor: p.pd }));
 
   const points = [...stepPoints, ...smoothedPoints, ...anchorPoints].sort((a, b) => a.score - b.score);
+
+  const domainMax = yMax ?? niceYMax(Math.max(
+    ...bands.map((b) => b.pd),
+    ...smoothed.map((p) => p.pd),
+    ...(anchors ?? []).map((p) => p.pd),
+    0,
+  ));
 
   return (
     <div className="chart-wrap">
@@ -64,7 +73,7 @@ export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anc
           label={{ value: "Score", position: "insideBottom", offset: -10, fill: "#374151" }}
         />
         <YAxis
-          domain={[0, 1]}
+          domain={[0, domainMax]}
           tick={{ fontSize: 12, fill: "#6b7280" }}
           label={{ value: "PD", angle: -90, position: "insideLeft", fill: "#374151" }}
         />

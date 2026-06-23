@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { niceYMax } from "../chart-utils";
 import type { ScorePd } from "../types";
 
 interface Props {
@@ -22,6 +23,12 @@ export function BacktestChart({ smoothed, actual }: Props) {
     smoothed[smoothed.length - 1]?.score ?? 0,
     actual[actual.length - 1]?.score ?? 0,
   );
+
+  const domainMax = niceYMax(Math.max(
+    ...smoothed.map((p) => p.pd),
+    ...actual.map((p) => p.pd),
+    0,
+  ));
 
   return (
     <div className="chart-wrap">
@@ -37,7 +44,7 @@ export function BacktestChart({ smoothed, actual }: Props) {
         />
         <YAxis
           dataKey="pd"
-          domain={[0, 1]}
+          domain={[0, domainMax]}
           tick={{ fontSize: 12, fill: "#6b7280" }}
           label={{ value: "PD / bad rate", angle: -90, position: "insideLeft", fill: "#374151" }}
         />

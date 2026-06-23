@@ -5,6 +5,7 @@ import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import { StackStepper } from "./StackStepper";
 import { BayesianTransition } from "./BayesianTransition";
 import { SmoothingView } from "./SmoothingView";
+import { niceYMax } from "../chart-utils";
 import type { PipelineResponse } from "../types";
 
 interface Props {
@@ -71,6 +72,23 @@ function durationFor(frame: Frame): number {
 }
 
 export function PipelineView({ pipeline }: Props) {
+  const stageYMax = useMemo(() => {
+    const finalMax = (values: number[]) => niceYMax(Math.max(...values, 0));
+    const poolingFinal = pipeline.pooling[pipeline.pooling.length - 1]?.stack ?? [];
+    const minSizeFinal = pipeline.minimum_size[pipeline.minimum_size.length - 1]?.stack ?? [];
+    const repoolingFinal = pipeline.repooling[pipeline.repooling.length - 1]?.stack ?? [];
+    return {
+      0: finalMax(poolingFinal.map((b) => b.bad_rate)),
+      1: finalMax(minSizeFinal.map((b) => b.bad_rate)),
+      2: finalMax(pipeline.bayesian.flatMap((b) => [b.bad_rate, b.pd])),
+      3: finalMax(repoolingFinal.map((b) => b.pd)),
+      4: finalMax([
+        ...pipeline.smoothing.bands.map((b) => b.pd),
+        ...pipeline.smoothing.smoothed.map((p) => p.pd),
+      ]),
+    };
+  }, [pipeline]);
+
   const frames = useMemo<Frame[]>(() => {
     const f: Frame[] = [];
     pipeline.pooling.forEach((_, i) => f.push({ stage: 0, step: i }));
@@ -245,6 +263,7 @@ export function PipelineView({ pipeline }: Props) {
             index={frame.step}
             valueOf={(b) => b.bad_rate}
             valueLabel="bad rate"
+            yMax={stageYMax[0]}
             pushMessage={(step) => {
               const b = step.stack[step.stack.length - 1];
               return `Pushed the ${b.score_min}-${b.score_max} bin (bad rate ${b.bad_rate.toFixed(3)}) onto the stack.`;
@@ -258,6 +277,7 @@ export function PipelineView({ pipeline }: Props) {
             index={frame.step}
             valueOf={(b) => b.bad_rate}
             valueLabel="bad rate"
+            yMax={stageYMax[1]}
             pushMessage={(step) => {
               if (step.stack.length > 1) {
                 return "Starting point: the bands produced by pooling, before checking minimum size and default-count requirements.";
@@ -275,7 +295,7 @@ export function PipelineView({ pipeline }: Props) {
         )}
 
         {frame.stage === 2 && (
-          <BayesianTransition bands={pipeline.bayesian} current={frame.current} shrunk={frame.shrunk} disableAllAnimation={recording} />
+          <BayesianTransition bands={pipeline.bayesian} current={frame.current} shrunk={frame.shrunk} disableAllAnimation={recording} yMax={stageYMax[2]} />
         )}
 
         {frame.stage === 3 && (
@@ -284,6 +304,7 @@ export function PipelineView({ pipeline }: Props) {
             index={frame.step}
             valueOf={(b) => b.pd}
             valueLabel="pd"
+            yMax={stageYMax[3]}
             pushMessage={(step) => {
               const b = step.stack[step.stack.length - 1];
               return `Pushed the ${b.score_min}-${b.score_max} band (PD ${b.pd.toFixed(3)}) onto the stack.`;
@@ -297,7 +318,7 @@ export function PipelineView({ pipeline }: Props) {
           />
         )}
 
-        {frame.stage === 4 && <SmoothingView smoothing={pipeline.smoothing} phase={frame.phase} disableAllAnimation={recording} />}
+        {frame.stage === 4 && <SmoothingView smoothing={pipeline.smoothing} phase={frame.phase} disableAllAnimation={recording} yMax={stageYMax[4]} />}
       </div>
     </div>
   );

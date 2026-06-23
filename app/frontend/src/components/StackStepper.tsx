@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { niceYMax } from "../chart-utils";
 
 interface BinLike {
   score_min: number;
@@ -37,6 +38,7 @@ interface Props<T extends BinLike> {
   pushMessage: (step: StepLike<T>) => string;
   referenceBands?: ReferenceBand[];
   referenceLabel?: string;
+  yMax?: number;
 }
 
 interface Point {
@@ -54,6 +56,7 @@ export function StackStepper<T extends BinLike>({
   pushMessage,
   referenceBands,
   referenceLabel,
+  yMax,
 }: Props<T>) {
   if (steps.length === 0) {
     return <p>No steps to show.</p>;
@@ -86,6 +89,12 @@ export function StackStepper<T extends BinLike>({
 
   const mergedPoints = [...points, ...referencePoints].sort((a, b) => a.score - b.score);
 
+  const domainMax = yMax ?? niceYMax(Math.max(
+    ...steps.flatMap((s) => s.stack.map(valueOf)),
+    ...(referenceBands ?? []).map((b) => b.value),
+    0,
+  ));
+
   return (
     <div>
       <p className="stepper-reason">{step.action === "push" ? pushMessage(step) : step.reason}</p>
@@ -116,7 +125,7 @@ export function StackStepper<T extends BinLike>({
             label={{ value: "Score", position: "insideBottom", offset: -10, fill: "#374151" }}
           />
           <YAxis
-            domain={[0, 1]}
+            domain={[0, domainMax]}
             tick={{ fontSize: 12, fill: "#6b7280" }}
             label={{ value: valueLabel, angle: -90, position: "insideLeft", fill: "#374151" }}
           />

@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { niceYMax } from "../chart-utils";
 import type { BayesianBand } from "../types";
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
   current: number;
   shrunk: boolean;
   disableAllAnimation?: boolean;
+  yMax?: number;
 }
 
 interface Point {
@@ -26,13 +28,19 @@ interface Point {
   highlight?: number;
 }
 
-export function BayesianTransition({ bands, current, shrunk, disableAllAnimation = false }: Props) {
+export function BayesianTransition({ bands, current, shrunk, disableAllAnimation = false, yMax }: Props) {
   const scoreMin = bands[0].score_min;
   const scoreMax = bands[bands.length - 1].score_max;
 
   const totalObs = bands.reduce((sum, b) => sum + b.n_obs, 0);
   const totalBads = bands.reduce((sum, b) => sum + b.n_bads, 0);
   const prior = totalBads / totalObs;
+
+  const domainMax = yMax ?? niceYMax(Math.max(
+    ...bands.map((b) => b.bad_rate),
+    ...bands.map((b) => b.pd),
+    0,
+  ));
 
   const points: Point[] = [];
   bands.forEach((b, i) => {
@@ -70,7 +78,7 @@ export function BayesianTransition({ bands, current, shrunk, disableAllAnimation
             label={{ value: "Score", position: "insideBottom", offset: -10, fill: "#374151" }}
           />
           <YAxis
-            domain={[0, 1]}
+            domain={[0, domainMax]}
             tick={{ fontSize: 12, fill: "#6b7280" }}
             label={{ value: "Rate", angle: -90, position: "insideLeft", fill: "#374151" }}
           />
