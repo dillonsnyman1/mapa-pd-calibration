@@ -46,6 +46,20 @@ export default function App() {
   const [pipeline, setPipeline] = useState<PipelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("import")) return;
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type !== "scorecard-observations" || !Array.isArray(e.data.observations)) return;
+      setCustomObservations(e.data.observations as Observation[]);
+      window.history.replaceState({}, "", window.location.pathname);
+    };
+    window.addEventListener("message", handler);
+    if (window.opener) {
+      (window.opener as Window).postMessage({ type: "calibration-ready" }, "*");
+    }
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
   const isCustom = customObservations !== null;
   const observations: Observation[] | null = isCustom
     ? (weightingMode === "number" ? customObservations.map(([s, b]) => [s, b, 1]) : customObservations)
@@ -90,6 +104,15 @@ export default function App() {
             the repository
           </a>{" "}
           for the reference implementations and methodology.
+        </p>
+        <p>
+          This tool takes scored observations (score + default indicator) as input,
+          typically produced by a credit risk scorecard. Upload your own scored dataset
+          or use the bundled example. For an end-to-end scorecard development workflow
+          that produces scored data in the required format, see the{" "}
+          <a href="https://d1kpl55ytl00tk.cloudfront.net" target="_blank" rel="noreferrer">
+            Scorecard Builder
+          </a>.
         </p>
       </header>
 
