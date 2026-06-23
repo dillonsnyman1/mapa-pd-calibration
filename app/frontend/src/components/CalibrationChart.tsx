@@ -41,7 +41,7 @@ export function CalibrationChart({ bands, smoothed, animateSmoothed = false, anc
 
   return (
     <div className="chart-wrap">
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%" debounce={1}>
       <LineChart data={points} margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
         {showBandRanges &&

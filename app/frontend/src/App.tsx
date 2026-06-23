@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchCalibration, fetchExample, fetchExampleWeighted, fetchPipeline } from "./api";
 import { BacktestChart } from "./components/BacktestChart";
 import { CalibrationChart } from "./components/CalibrationChart";
@@ -61,11 +61,12 @@ export default function App() {
   }, []);
 
   const isCustom = customObservations !== null;
-  const observations: Observation[] | null = isCustom
-    ? (weightingMode === "number" ? customObservations.map(([s, b]) => [s, b, 1]) : customObservations)
-    : weightingMode === "value"
-      ? exampleWeightedObs
-      : exampleObs;
+  const observations = useMemo<Observation[] | null>(() => {
+    if (isCustom) {
+      return weightingMode === "number" ? customObservations.map(([s, b]) => [s, b, 1]) : customObservations;
+    }
+    return weightingMode === "value" ? exampleWeightedObs : exampleObs;
+  }, [isCustom, customObservations, weightingMode, exampleWeightedObs, exampleObs]);
 
   const debouncedParams = useDebounced(params, 300);
   const debouncedObservations = useDebounced(observations, 300);
