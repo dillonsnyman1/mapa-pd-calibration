@@ -9,6 +9,7 @@ interface Props {
   error: string | null;
   weightingMode: WeightingMode;
   onWeightingModeChange: (mode: WeightingMode) => void;
+  hasWeights: boolean;
 }
 
 function parseCsv(text: string): Observation[] {
@@ -48,7 +49,7 @@ function parseCsv(text: string): Observation[] {
 
 export function ControlsPanel({
   params, onParamsChange, onObservationsChange, onError, datasetLabel, error,
-  weightingMode, onWeightingModeChange,
+  weightingMode, onWeightingModeChange, hasWeights,
 }: Props) {
   const useWeightedThresholds = weightingMode === "value" && !params.use_counts_for_thresholds;
 
@@ -117,14 +118,16 @@ export function ControlsPanel({
                 />
                 Number weighted
               </label>
-              <label className="checkbox-label">
+              <label className="checkbox-label" style={!hasWeights ? { opacity: 0.5, cursor: "default" } : undefined}>
                 <input
                   type="radio"
                   name="weighting"
                   checked={weightingMode === "value"}
                   onChange={() => onWeightingModeChange("value")}
+                  disabled={!hasWeights}
                 />
                 Value weighted
+                {!hasWeights && <span style={{ fontSize: "0.8em", marginLeft: "0.3rem", fontStyle: "italic" }}>(no weight column)</span>}
               </label>
             </div>
           </div>

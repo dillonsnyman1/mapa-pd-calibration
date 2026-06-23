@@ -87,6 +87,14 @@ export default function App() {
       .catch((e) => setError(String(e)));
   }, [debouncedObservations, debouncedParams]);
 
+  const hasWeights = isCustom
+    ? customObservations.some(([, , w]) => w !== 1)
+    : true;
+
+  useEffect(() => {
+    if (!hasWeights && weightingMode === "value") setWeightingMode("number");
+  }, [hasWeights, weightingMode]);
+
   const exampleCount = isCustom ? null : observations?.length ?? null;
   const datasetLabel = isCustom
     ? `Custom upload (${customObservations.length} observations)`
@@ -126,6 +134,7 @@ export default function App() {
           error={error}
           weightingMode={weightingMode}
           onWeightingModeChange={setWeightingMode}
+          hasWeights={hasWeights}
         />
       </div>
 
