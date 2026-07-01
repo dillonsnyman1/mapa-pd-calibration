@@ -10,10 +10,11 @@ dependencies:
 - [`matlab/`](matlab/) - base MATLAB or GNU Octave (free, open source), no toolboxes required
 - [`sas/`](sas/) - SAS macros
 
-Python, C++ and R are validated against the same fixture files in
+Python, C++, R and Octave are validated against the same fixture files in
 [`fixtures/`](fixtures/) as part of automated CI. The MATLAB and SAS
 implementations use the same fixtures but are validated manually (see their
-respective READMEs) since those runtimes are not available in CI.
+respective READMEs) since those runtimes are not available in CI. The Octave
+implementation covers MATLAB as well — all changes are compatible with both.
 
 See [`../docs/mapa-methodology.md`](../docs/mapa-methodology.md) for an
 explanation of the algorithm.

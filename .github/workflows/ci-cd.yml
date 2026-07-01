@@ -84,6 +84,19 @@ jobs:
       - name: Run R tests
         run: Rscript reference/r/test_mapa.R
 
+  octave-tests:
+    name: Octave tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Octave and datatypes package
+        run: sudo apt-get install -y octave octave-datatypes
+
+      - name: Run Octave tests
+        working-directory: reference/matlab
+        run: octave --no-gui test_mapa.m
+
   frontend-build:
     name: Frontend build
     runs-on: ubuntu-latest
@@ -105,7 +118,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [frontend-build, python-tests, cpp-tests, r-tests]
+    needs: [frontend-build, python-tests, cpp-tests, r-tests, octave-tests]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:

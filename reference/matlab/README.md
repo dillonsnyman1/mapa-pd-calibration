@@ -22,6 +22,7 @@ reference/matlab/
 ├── interpolate_pd.m              Smooth step-function to continuous PD curve
 ├── run_pipeline.m                Full pipeline (steps above chained together)
 ├── test_mapa.m                   Script-based test suite
+├── run_example.m                 Run the pipeline on the bundled example dataset
 └── private/
     ├── bin_violates.m            Bad-rate monotonicity check
     ├── pd_violates.m             PD monotonicity check
@@ -68,6 +69,16 @@ octave --no-gui test_mapa.m
 ```
 
 The script prints each test result and finishes with `All tests passed.`
+
+To run the pipeline on the bundled example dataset without the test suite:
+
+```bash
+# MATLAB
+run('run_example.m')
+
+# Octave
+octave --no-gui run_example.m
+```
 
 ## Usage
 
