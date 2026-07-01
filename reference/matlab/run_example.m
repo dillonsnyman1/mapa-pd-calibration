@@ -4,7 +4,7 @@
 %   octave --no-gui run_example.m
 
 if exist('OCTAVE_VERSION', 'builtin')
-    pkg load datatypes
+    try, pkg load datatypes; catch, end
 end
 
 this_dir     = fileparts(mfilename('fullpath'));

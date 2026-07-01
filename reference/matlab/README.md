@@ -60,11 +60,17 @@ test_mapa
 
 ### GNU Octave
 
-Install Octave 7+ and the `datatypes` package (one-time setup), then run
-`test_mapa.m` from the `reference/matlab/` directory:
+Install Octave 7+ and run `test_mapa.m` from the `reference/matlab/` directory:
 
 ```bash
-pkg install -forge datatypes
+octave --no-gui test_mapa.m
+```
+
+On Octave 7.x you also need the `datatypes` package (Octave 8+ has table
+support built in):
+
+```bash
+octave --no-gui --eval "pkg install -forge datatypes"
 octave --no-gui test_mapa.m
 ```
 

@@ -10,9 +10,10 @@
 %
 % Local helper functions are in the private/ subdirectory.
 
-% Load Octave's datatypes package for table support (no-op in MATLAB).
+% Load Octave's datatypes package for table support if needed.
+% Octave 8+ has table built in; older versions need the datatypes package.
 if exist('OCTAVE_VERSION', 'builtin')
-    pkg load datatypes
+    try, pkg load datatypes; catch, end
 end
 
 % Locate fixtures relative to this script's directory.

@@ -79,7 +79,6 @@ Rscript test_mapa.R
 **GNU Octave** (free, open source — [octave.org](https://octave.org)):
 
 ```bash
-pkg install -forge datatypes   # one-time setup
 cd reference/matlab
 octave --no-gui test_mapa.m
 ```
