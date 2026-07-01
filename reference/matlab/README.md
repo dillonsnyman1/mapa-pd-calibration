@@ -1,9 +1,13 @@
-# MAPA — MATLAB Reference Implementation
+# MAPA — MATLAB / GNU Octave Reference Implementation
 
 A pure base-MATLAB implementation of the Monotone Adjacent Pooling Algorithm
 (MAPA) for PD calibration. No toolboxes are required — the implementation
 uses only `erfinv` (available in base MATLAB since R2012a) in place of
 `norminv` from the Statistics and Machine Learning Toolbox.
+
+The code also runs in **[GNU Octave](https://octave.org)** (free, open source),
+version 7 or later. See [Running the tests](#running-the-tests) below for
+Octave-specific instructions.
 
 ## Files
 
@@ -23,13 +27,23 @@ reference/matlab/
     ├── pd_violates.m             PD monotonicity check
     ├── not_significant.m         Two-proportion z-test helper
     ├── merge_bins.m              Combine two adjacent bins
-    └── merge_calibrated.m        Combine two adjacent calibrated bins
+    ├── merge_calibrated.m        Combine two adjacent calibrated bins
+    ├── read_csv_table.m          CSV → table (readtable when available, dlmread fallback)
+    ├── load_bins.m               Test helper: load a bin fixture CSV
+    ├── load_observations.m       Test helper: load raw observations CSV
+    ├── load_weighted_bins.m      Test helper: load a weighted bin fixture CSV
+    ├── load_weighted_observations.m  Test helper: load weighted observations CSV
+    ├── bins_equal.m              Test helper: compare two bin tables
+    ├── calibrated_bins_equal.m   Test helper: compare two calibrated bin tables
+    └── weighted_bins_equal.m     Test helper: compare two weighted bin tables
 ```
 
 Fixture data shared with all reference implementations lives in
 `../fixtures/`.
 
 ## Running the tests
+
+### MATLAB
 
 Add `reference/matlab/` to your MATLAB path, then run:
 
@@ -43,9 +57,24 @@ or from inside the `reference/matlab/` directory:
 test_mapa
 ```
 
+### GNU Octave
+
+Install Octave 7+ and the `datatypes` package (one-time setup), then run
+`test_mapa.m` from the `reference/matlab/` directory:
+
+```bash
+pkg install -forge datatypes
+octave --no-gui test_mapa.m
+```
+
 The script prints each test result and finishes with `All tests passed.`
 
 ## Usage
+
+> **Octave note:** `readtable` is not available in Octave. Use the bundled
+> helper `read_csv_table('my_observations.csv')` (in `private/`) or build
+> the table manually with `dlmread` + `table()`. All pipeline and calibration
+> functions work identically in both environments.
 
 ### Step-by-step
 
@@ -55,7 +84,7 @@ addpath('/path/to/reference/matlab');
 
 % Load raw observations — a table with columns `score` and `bad`
 % (and optionally `weight` — see "Value-weighted observations" below)
-obs = readtable('my_observations.csv');
+obs = readtable('my_observations.csv');  % MATLAB; use read_csv_table() in Octave
 
 % 1. Group into one bin per unique score
 initial = bins_from_observations(obs);

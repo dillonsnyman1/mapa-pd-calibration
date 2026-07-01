@@ -26,9 +26,9 @@ IFRS 9 exposure-weighted PD calibration).
   attribution.
 - [`reference/`](reference/) - clean, dependency-light, side-by-side
   implementations of the core algorithm in **Python**, **C++**, **R**,
-  **MATLAB** and **SAS**, all validated against the same shared fixture data.
-  Intended as a readable starting point for anyone wanting to implement or
-  port MAPA themselves.
+  **MATLAB / GNU Octave** and **SAS**, all validated against the same shared
+  fixture data. Intended as a readable starting point for anyone wanting to
+  implement or port MAPA themselves.
 - [`examples/`](examples/) - scripts that plot the resulting score-to-PD
   calibration curves (unsmoothed and smoothed) for the Python and C++
   implementations.
@@ -72,9 +72,17 @@ Rscript -e "install.packages('testthat', repos='https://cloud.r-project.org')"
 Rscript test_mapa.R
 ```
 
-### MATLAB
+### MATLAB / GNU Octave
 
-Add `reference/matlab/` to your MATLAB path, then run `test_mapa` from the MATLAB command window.
+**MATLAB:** Add `reference/matlab/` to your path, then run `test_mapa` from the command window.
+
+**GNU Octave** (free, open source — [octave.org](https://octave.org)):
+
+```bash
+pkg install -forge datatypes   # one-time setup
+cd reference/matlab
+octave --no-gui test_mapa.m
+```
 
 ### SAS
 

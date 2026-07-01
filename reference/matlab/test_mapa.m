@@ -8,8 +8,12 @@
 %
 % Prints "All tests passed." on success. Calls error() on failure.
 %
-% Local helper functions are defined at the bottom of this file (required by
-% MATLAB: script local functions must follow all executable statements).
+% Local helper functions are in the private/ subdirectory.
+
+% Load Octave's datatypes package for table support (no-op in MATLAB).
+if exist('OCTAVE_VERSION', 'builtin')
+    pkg load datatypes
+end
 
 % Locate fixtures relative to this script's directory.
 this_dir     = fileparts(mfilename('fullpath'));
@@ -167,7 +171,7 @@ assert(all(result.n_obs     == expected.n_obs),     'n_obs mismatch');
 assert(all(result.n_bads    == expected.n_bads),    'n_bads mismatch');
 for ii = 1:height(result)
     assert(abs(result.pd(ii) - expected.pd(ii)) < 1e-9, ...
-        sprintf('pd mismatch at row %d', ii));
+        sprintf('pd mismatch at row %d: got %.15g, expected %.15g', ii, result.pd(ii), expected.pd(ii)));
 end
 fprintf('PASS\n');
 
@@ -209,7 +213,7 @@ pooled     = mapa_calibrate(obs);
 sized      = enforce_minimum_size(pooled, MIN_OBS, MIN_BADS);
 calibrated = apply_bayesian_adjustment(sized, BAYESIAN_K);
 repooled   = repool_calibrated_bins(calibrated);
-smooth_exp = readtable(fullfile(fixtures_dir, 'expected_smoothed_pds.csv'));
+smooth_exp = read_csv_table(fullfile(fixtures_dir, 'expected_smoothed_pds.csv'));
 for ii = 1:height(smooth_exp)
     score  = double(smooth_exp.score(ii));
     exp_pd = double(smooth_exp.pd(ii));
@@ -271,7 +275,7 @@ fprintf('PASS\n');
 fprintf('Test 18: run_pipeline pd_for_score matches interpolate_pd and expected ... ');
 obs      = load_observations(fixtures_dir);
 pipeline = run_pipeline(obs, BAYESIAN_K, MIN_OBS, MIN_BADS);
-smooth_exp2 = readtable(fullfile(fixtures_dir, 'expected_smoothed_pds.csv'));
+smooth_exp2 = read_csv_table(fullfile(fixtures_dir, 'expected_smoothed_pds.csv'));
 for ii = 1:height(smooth_exp2)
     score  = double(smooth_exp2.score(ii));
     exp_pd = double(smooth_exp2.pd(ii));
@@ -456,7 +460,7 @@ fprintf('PASS\n');
 fprintf('Test 31: weighted smoothed PDs match expected ... ');
 w_obs      = load_weighted_observations(fixtures_dir);
 w_pipeline = run_pipeline(w_obs, BAYESIAN_K, MIN_OBS, MIN_BADS, [], false, [], true);
-w_smooth   = readtable(fullfile(fixtures_dir, 'expected_smoothed_pds_weighted.csv'));
+w_smooth   = read_csv_table(fullfile(fixtures_dir, 'expected_smoothed_pds_weighted.csv'));
 for ii = 1:height(w_smooth)
     score  = double(w_smooth.score(ii));
     exp_pd = double(w_smooth.pd(ii));
@@ -471,75 +475,4 @@ fprintf('PASS\n');
 % ---------------------------------------------------------------------------
 fprintf('\nAll tests passed.\n');
 
-% ===========================================================================
-% Local helper functions (must appear after all executable script statements)
-% ===========================================================================
-
-function bins = load_bins(fixtures_dir, filename)
-% Load a bin table from a CSV fixture file.
-    t = readtable(fullfile(fixtures_dir, filename));
-    bins = table( ...
-        double(t.score_min), ...
-        double(t.score_max), ...
-        double(t.n_obs), ...
-        double(t.n_bads), ...
-        'VariableNames', {'score_min', 'score_max', 'n_obs', 'n_bads'});
-    if any(strcmp(t.Properties.VariableNames, 'pd'))
-        bins.pd = double(t.pd);
-    end
-end
-
-function obs = load_observations(fixtures_dir)
-% Load raw observations from CSV.
-    t = readtable(fullfile(fixtures_dir, 'raw_observations.csv'));
-    obs = table(double(t.score), double(t.bad), 'VariableNames', {'score', 'bad'});
-end
-
-function ok = bins_equal(a, b)
-% TRUE if two bin tables have the same shape, scores, and counts.
-    ok = height(a) == height(b) && ...
-         all(a.score_min == b.score_min) && ...
-         all(a.score_max == b.score_max) && ...
-         all(a.n_obs     == b.n_obs) && ...
-         all(a.n_bads    == b.n_bads);
-end
-
-function ok = calibrated_bins_equal(a, b, tol)
-% TRUE if two calibrated bin tables agree within tolerance on all columns.
-    if nargin < 3; tol = 1e-9; end
-    if ~bins_equal(a, b); ok = false; return; end
-    rel_err = abs(a.pd - b.pd) ./ max(abs(b.pd), 1e-15);
-    ok = all(abs(a.pd - b.pd) < tol | rel_err < tol);
-end
-
-function obs = load_weighted_observations(fixtures_dir)
-% Load weighted raw observations from CSV.
-    t = readtable(fullfile(fixtures_dir, 'raw_observations_weighted.csv'));
-    obs = table(double(t.score), double(t.bad), double(t.weight), ...
-                'VariableNames', {'score', 'bad', 'weight'});
-end
-
-function bins = load_weighted_bins(fixtures_dir, filename)
-% Load a weighted bin table from a CSV fixture file.
-    t = readtable(fullfile(fixtures_dir, filename));
-    bins = table( ...
-        double(t.score_min), double(t.score_max), ...
-        double(t.n_obs), double(t.n_bads), ...
-        double(t.count), double(t.count_bads), ...
-        'VariableNames', {'score_min', 'score_max', 'n_obs', 'n_bads', 'count', 'count_bads'});
-    if any(strcmp(t.Properties.VariableNames, 'pd'))
-        bins.pd = double(t.pd);
-    end
-end
-
-function ok = weighted_bins_equal(a, b, tol)
-% TRUE if two weighted bin tables agree within tolerance.
-    if nargin < 3; tol = 1e-6; end
-    if height(a) ~= height(b); ok = false; return; end
-    ok = all(a.score_min == b.score_min) && ...
-         all(a.score_max == b.score_max) && ...
-         all(abs(a.n_obs - b.n_obs) < tol) && ...
-         all(abs(a.n_bads - b.n_bads) < tol) && ...
-         all(a.count == b.count) && ...
-         all(a.count_bads == b.count_bads);
-end
+% Helper functions are in the private/ subdirectory for Octave compatibility.

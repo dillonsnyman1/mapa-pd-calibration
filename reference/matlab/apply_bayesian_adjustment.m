@@ -23,5 +23,6 @@ end
 
 pd = (bins.n_bads + k * prior) ./ (bins.n_obs + k);
 
-calibrated = [bins, table(pd)];
+calibrated = bins;
+calibrated.pd = pd;
 end

@@ -8,12 +8,11 @@ function merged = merge_calibrated(a, b)
 %             n_obs, n_bads, pd, count, count_bads)
 %   merged — single-row calibrated bin table
 
-n_obs  = a.n_obs + b.n_obs;
-n_bads = a.n_bads + b.n_bads;
-pd     = (a.pd * a.n_obs + b.pd * b.n_obs) / n_obs;
-
+n_obs  = double(a.n_obs) + double(b.n_obs);
+n_bads = double(a.n_bads) + double(b.n_bads);
+pd     = (double(a.pd) * double(a.n_obs) + double(b.pd) * double(b.n_obs)) / n_obs;
 merged = table( ...
-    a.score_min, b.score_max, n_obs, n_bads, pd, ...
-    a.count + b.count, a.count_bads + b.count_bads, ...
-    'VariableNames', {'score_min', 'score_max', 'n_obs', 'n_bads', 'pd', 'count', 'count_bads'});
+    a.score_min, b.score_max, n_obs, n_bads, ...
+    a.count + b.count, a.count_bads + b.count_bads, pd, ...
+    'VariableNames', {'score_min', 'score_max', 'n_obs', 'n_bads', 'count', 'count_bads', 'pd'});
 end

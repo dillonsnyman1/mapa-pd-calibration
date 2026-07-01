@@ -7,7 +7,7 @@ dependencies:
 - [`python/`](python/) - pure Python (standard library only)
 - [`cpp/`](cpp/) - C++17 (no external dependencies)
 - [`r/`](r/) - base R only (`testthat` for tests only)
-- [`matlab/`](matlab/) - base MATLAB, no toolboxes required
+- [`matlab/`](matlab/) - base MATLAB or GNU Octave (free, open source), no toolboxes required
 - [`sas/`](sas/) - SAS macros
 
 Python, C++ and R are validated against the same fixture files in
