@@ -90,8 +90,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Octave and datatypes package
-        run: sudo apt-get install -y octave octave-datatypes
+      - name: Install Octave
+        run: sudo apt-get install -y octave
+
+      - name: Install datatypes package from Octave Forge
+        run: octave --no-gui --eval "pkg install -forge datatypes"
 
       - name: Run Octave tests
         working-directory: reference/matlab
