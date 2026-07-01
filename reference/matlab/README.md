@@ -6,7 +6,7 @@ uses only `erfinv` (available in base MATLAB since R2012a) in place of
 `norminv` from the Statistics and Machine Learning Toolbox.
 
 The code also runs in **[GNU Octave](https://octave.org)** (free, open source),
-version 7 or later. See [Running the tests](#running-the-tests) below for
+version 11 or later (table support was added to Octave core in v11). See [Running the tests](#running-the-tests) below for
 Octave-specific instructions.
 
 ## Files
@@ -60,17 +60,9 @@ test_mapa
 
 ### GNU Octave
 
-Install Octave 7+ and run `test_mapa.m` from the `reference/matlab/` directory:
+Install Octave 11+ and run `test_mapa.m` from the `reference/matlab/` directory:
 
 ```bash
-octave --no-gui test_mapa.m
-```
-
-On Octave 7.x you also need the `datatypes` package (Octave 8+ has table
-support built in):
-
-```bash
-octave --no-gui --eval "pkg install -forge datatypes"
 octave --no-gui test_mapa.m
 ```
 

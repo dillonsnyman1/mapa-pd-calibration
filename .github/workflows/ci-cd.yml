@@ -87,7 +87,7 @@ jobs:
   octave-tests:
     name: Octave tests
     runs-on: ubuntu-latest
-    container: gnuoctave/octave:9.2.0
+    container: gnuoctave/octave:11.1.0
     steps:
       - uses: actions/checkout@v4
 
